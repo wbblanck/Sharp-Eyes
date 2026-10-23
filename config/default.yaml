@@ -1,0 +1,36 @@
+# Sharp-Eyes default configuration (spec v3.0, section 11.1).
+# These are starting engineering defaults, not validated optimal values.
+# Secrets (database URL, venue credentials) are never stored here; they come from
+# environment variables. See .env.example.
+
+execution:
+  mode: paper
+  live_orders_enabled: false
+
+paper:
+  stake_mode: fixed_usd          # fixed_usd | fixed_units
+  fixed_stake_usd: "10.00"
+  unit_value_usd: "10.00"
+  units_per_signal: "1.0"
+  bankroll_usd: "1000.00"
+  execution_mode: delayed_quote  # immediate_indicative | delayed_quote | depth_aware
+
+risk:
+  min_net_ev: "0.01"
+  max_signal_age_seconds: 30
+  require_exact_contract_match: true
+  max_per_event_exposure_usd: "30.00"
+  max_per_trader_exposure_usd: "50.00"
+  max_total_open_exposure_usd: "500.00"
+
+qualification:
+  # Initial research filter only; crossing it never qualifies a trader by itself.
+  min_settled_wagers: 200
+  min_distinct_events: 30
+
+cadence_seconds:
+  polymarket_trade_ingestion: 10
+  market_catalog_refresh: 300
+  qualification_recalc: 1800
+  settlement_polling: 600
+  health_check: 60
