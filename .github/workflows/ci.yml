@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16.6
+        env:
+          POSTGRES_USER: sharp_eyes
+          POSTGRES_PASSWORD: sharp_eyes
+          POSTGRES_DB: sharp_eyes_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U sharp_eyes" --health-interval 5s --health-retries 10
+    env:
+      SHARP_EYES_TEST_DATABASE_URL: postgresql+psycopg://sharp_eyes:sharp_eyes@localhost:5432/sharp_eyes_test
+      SHARP_EYES_DATABASE_URL: postgresql+psycopg://sharp_eyes:sharp_eyes@localhost:5432/sharp_eyes_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.5.11"
+      - run: uv sync --frozen
+      - run: uv run ruff format --check src tests migrations
+      - run: uv run ruff check src tests migrations
+      - run: uv run mypy
+      - run: uv run pytest -q
+      # The migration must build the same schema the tests create directly.
+      - run: |
+          psql "postgresql://sharp_eyes:sharp_eyes@localhost:5432/sharp_eyes_test" -c "DROP SCHEMA IF EXISTS capture CASCADE"
+          uv run sharp-eyes migrate
+          uv run alembic check
