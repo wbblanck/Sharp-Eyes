@@ -72,6 +72,19 @@ venue's book job running throughout. Treat a gap in `poll_runs` as missing data.
   raise the limit to 16 reads per second.
 * **Polymarket US has no public tape.** Book rows keep last-trade stats, which
   show that trading happened but not every fill.
+* **Polymarket fills can surface late.** In the first test run some fills
+  appeared in `/v2/trades` about 100 to 120 seconds after their block time, while
+  `/v2/status` reported only 2 to 4 seconds of lag. Each poll therefore re-reads
+  the last 10 minutes (`trade_overlap_seconds`). See
+  `docs/reports/2026-10-24-polymarket-latency.md`.
+* **Faster signal source not yet used.** Polymarket's live-data websocket
+  (`wss://ws-live-data.polymarket.com`, topic `activity`/`trades`) pushes
+  wallet-attributed fills for all markets in under a second. It is a likely
+  Phase 1 addition, with `/v2/trades` kept for reconciliation; whether it
+  includes maker fills is unverified.
+* **Kalshi trades poll can hit 429.** The global tape is rate-limited per IP;
+  a failed poll is retried next cycle from the same checkpoint, so nothing is
+  lost.
 * Backfilled Polymarket history is trader-price evidence only. It says what
   wallets paid, not what a follower could have paid.
 

@@ -137,7 +137,7 @@ class PolymarketCaptureConfig(VenueCaptureConfig):
     data_rate_per_second: float = Field(default=10.0, gt=0)  # Data API: 300 req / 10 s
     clob_rate_per_second: float = Field(default=10.0, gt=0)
     status_seconds: int = Field(default=10, gt=0)
-    trade_overlap_seconds: int = Field(default=120, ge=0)
+    trade_overlap_seconds: int = Field(default=600, ge=0)
     backfill_history: bool = True
 
 
