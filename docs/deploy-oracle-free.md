@@ -73,7 +73,10 @@ cd Sharp-Eyes && git pull && docker compose up -d --build
 ## Disk budget
 
 Book rows are written only when a book changes, so growth depends on how
-active the markets are; it is highest on Sundays. Check `df -h` weekly for the
+active the markets are; it is highest on Sundays. In the first 45-minute test
+(a quiet Saturday morning, most games 1 to 8 days out) book rows grew about
+120 MB an hour, roughly 3 GB a day, nearly all of it Polymarket half and
+quarter markets. At that pace the 200 GB disk lasts about two months. Check `df -h` weekly for the
 first few weeks. If the disk ever gets tight, narrow `book_scope` for
 Polymarket in `config/default.yaml` from `game` to `core`, which drops half and
 quarter markets.
