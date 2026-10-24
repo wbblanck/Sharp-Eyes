@@ -70,7 +70,13 @@ class CopyabilityReport:
                 "| measure | n | mean | median | share > 0 |",
                 "|---|---|---|---|---|",
             ]
-            for name in ("slippage", "follower_clv", "trader_clv", "copy_cost"):
+            for name in (
+                "slippage",
+                "slippage_with_fees",
+                "follower_clv",
+                "trader_clv",
+                "copy_cost",
+            ):
                 d = s.get(name) or {}
                 lines.append(
                     f"| {name} | {d.get('n', 0)} | {_c(d.get('mean'))} | {_c(d.get('median'))} "
@@ -78,7 +84,8 @@ class CopyabilityReport:
                 )
             lines += [
                 "",
-                "slippage = follower average price minus trader price; follower_clv = closing "
+                "slippage = follower average price minus trader price; slippage_with_fees adds "
+                "the follower's taker fee per contract; follower_clv = closing "
                 "mid minus follower price with fees; trader_clv = Polymarket closing mid minus "
                 "trader price; copy_cost = trader_clv minus follower_clv.",
                 "",
@@ -202,6 +209,9 @@ def _scored_summary(scores: Sequence[CopyScore]) -> dict[str, Any]:
     best = [s.best for s in scores if s.best]
     return {
         "slippage": _stats([s.slippage for s in scores if s.slippage is not None]),
+        "slippage_with_fees": _stats(
+            [s.best.fill.effective_price - s.wager.price for s in scores if s.best and s.best.fill]
+        ),
         "follower_clv": _stats([s.follower_clv for s in scores if s.follower_clv is not None]),
         "trader_clv": _stats([s.trader_clv for s in scores if s.trader_clv is not None]),
         "copy_cost": _stats([s.trader_clv - s.follower_clv for s in both]),  # type: ignore[operator]

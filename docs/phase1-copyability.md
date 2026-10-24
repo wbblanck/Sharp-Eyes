@@ -129,6 +129,7 @@ never falls back to the trader's own price.
 **Measures** (probability points; 0.01 = 1¢ per $1 contract):
 
 * `slippage`: follower average price minus trader price.
+* `slippage_with_fees`: the same, using the follower's fee-inclusive price.
 * `follower_clv`: closing mid on the chosen venue minus the follower's
   fee-inclusive price. Positive means the copy beat the close.
 * `trader_clv`: Polymarket closing mid minus trader price. This is a skill
@@ -141,11 +142,23 @@ the final 10 minutes.
 
 ## First live run
 
-The first run on 2026-10-24 covered 25 minutes of live capture on a Saturday,
-which is too little and too quiet to say anything about copyability yet. The
-output is in [reports/2026-10-24-copyability.md](reports/2026-10-24-copyability.md).
-Meaningful numbers need at least one full Sunday slate captured from Oracle,
-plus CLV, which can only be computed after kickoff.
+The first run on 2026-10-24 covered 14 minutes of live capture on a quiet
+Saturday, from 16:59 to 17:13 UTC, when the container restarted. The report
+is in [reports/2026-10-24-copyability.md](reports/2026-10-24-copyability.md).
+
+* 68 live-detected Polymarket fills formed 48 wagers. 15 of them were $100 or
+  more, and all 15 were scored.
+* Polymarket US offered the best price for 14 of them and Kalshi for 1.
+* Before fees, the follower paid a mean of +0.4¢ more than the trader (median
+  +0.75¢). With taker fees included, the gap was +2.1¢, and the follower paid
+  more on every wager. At these prices, fees cost a follower more than the
+  delay did.
+* The detection delay from block time to first sighting had a median of 24 s
+  and a p90 of 173 s.
+* CLV is n/a because none of these games had kicked off.
+
+This is far too small a sample to judge copyability. That needs at least one
+full Sunday slate captured on Oracle, with CLV computed after kickoff.
 
 ## Known limits
 
