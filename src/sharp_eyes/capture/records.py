@@ -144,6 +144,10 @@ class TradeRecord:
     # trade. With observed_at it brackets when the trade became visible in the
     # API. None for backfill or the first poll of a scope (no latency sample).
     prev_poll_at: datetime | None = None
+    # Which feed delivered this row: "api" (REST polls, backfill) or "ws"
+    # (Polymarket's live-data websocket). The store keeps each feed's first
+    # sighting so the two can be compared fill by fill.
+    source: str = "api"
 
 
 def content_hash(raw: Any) -> str:

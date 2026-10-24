@@ -12,6 +12,7 @@ from pathlib import Path
 from sqlalchemy import text
 
 from sharp_eyes.capture.latency import build_report, default_since
+from sharp_eyes.capture.records import TradeRecord
 from sharp_eyes.capture.schema import SCHEMA
 from sharp_eyes.capture.store import CaptureStore
 from sharp_eyes.capture.worker import run_worker
@@ -55,6 +56,41 @@ def cmd_latency(args: argparse.Namespace) -> int:
     else:
         sys.stdout.write(body)
     return 0
+
+
+def cmd_rtds_tail(args: argparse.Namespace) -> int:
+    """Print fills from the Polymarket live-data websocket (a connectivity check)."""
+    from sharp_eyes.capture.venues.polymarket_rtds import RtdsTradeStream, Session
+
+    stream = RtdsTradeStream()
+    seen = 0
+
+    async def show(trades: list[TradeRecord]) -> None:
+        nonlocal seen
+        for t in trades:
+            lag = (t.observed_at - t.ts).total_seconds() if t.observed_at else float("nan")
+            print(
+                f"{t.ts:%H:%M:%S} +{lag:5.1f}s {t.side or '?':<4} {t.size:>12} @ {t.price:<8} "
+                f"{t.wallet} {t.raw.get('slug') or t.market_id}"
+            )
+        seen += len(trades)
+
+    async def session(seg: Session) -> None:
+        if not seg.ok:
+            print(f"disconnected: {seg.error}", file=sys.stderr)
+
+    async def run() -> None:
+        try:
+            await asyncio.wait_for(
+                stream.run(lambda t: args.slug in (t.raw.get("event_slug") or ""), show, session),
+                timeout=args.seconds,
+            )
+        except TimeoutError:
+            pass
+
+    asyncio.run(run())
+    print(f"{seen} fills in {args.seconds:g} s", file=sys.stderr)
+    return 0 if seen else 1
 
 
 def cmd_status(args: argparse.Namespace) -> int:
@@ -148,6 +184,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--format", choices=("md", "json"), default="md")
     p.add_argument("--out")
     p.set_defaults(fn=cmd_latency)
+
+    p = sub.add_parser("rtds-tail", help="print fills from the Polymarket live-data websocket")
+    p.add_argument("--seconds", type=float, default=30.0)
+    p.add_argument("--slug", default="", help="only events whose slug contains this, e.g. nfl-")
+    p.set_defaults(fn=cmd_rtds_tail)
 
     p = sub.add_parser("status", help="capture counts and recent polls")
     p.add_argument("--hours", type=float, default=1.0)
