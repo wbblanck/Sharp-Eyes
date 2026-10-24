@@ -83,7 +83,9 @@ _NBA: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
 )
 
 
-def _teams(sport: Sport, rows: tuple[tuple[str, str, str, tuple[str, ...]], ...]) -> list[Participant]:
+def _teams(
+    sport: Sport, rows: tuple[tuple[str, str, str, tuple[str, ...]], ...]
+) -> list[Participant]:
     out = []
     for abbr, city, nickname, extra in rows:
         full = f"{city} {nickname}"

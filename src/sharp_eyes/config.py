@@ -111,12 +111,85 @@ class CadenceConfig(_Frozen):
     health_check: int = Field(default=60, gt=0)
 
 
+class BookScope(StrEnum):
+    CORE = "core"  # Full-game moneyline, spread, total (the first milestone)
+    GAME = "game"  # Every non-prop game market, including halves and quarters
+    ALL = "all"  # Everything in the catalog, props included
+
+
+class CaptureTier(_Frozen):
+    """Book polling interval for games kicking off within ``within_minutes``."""
+
+    within_minutes: int = Field(gt=0)
+    books_seconds: int = Field(gt=0)
+
+
+class VenueCaptureConfig(_Frozen):
+    enabled: bool = True
+    rate_per_second: float = Field(default=5.0, gt=0)
+    concurrency: int = Field(default=4, ge=1)
+    book_scope: BookScope = BookScope.CORE
+    trades_seconds: int = Field(default=30, gt=0)
+    max_levels: int = Field(default=50, ge=1)
+
+
+class PolymarketCaptureConfig(VenueCaptureConfig):
+    data_rate_per_second: float = Field(default=10.0, gt=0)  # Data API: 300 req / 10 s
+    clob_rate_per_second: float = Field(default=10.0, gt=0)
+    status_seconds: int = Field(default=10, gt=0)
+    trade_overlap_seconds: int = Field(default=120, ge=0)
+    backfill_history: bool = True
+
+
+class KalshiCaptureConfig(VenueCaptureConfig):
+    series: tuple[str, ...] = ("KXNFLGAME", "KXNFLSPREAD", "KXNFLTOTAL", "KXNFLTEAMTOTAL")
+
+
+class NovigCaptureConfig(VenueCaptureConfig):
+    market_types: tuple[str, ...] = (
+        "MONEY",
+        "SPREAD",
+        "TOTAL",
+        "TEAM_TOTAL",
+        "SPREAD_1H",
+        "TOTAL_1H",
+    )
+
+
+class CaptureConfig(_Frozen):
+    """Phase 0 capture worker (NFL catalogs, books and trades)."""
+
+    # Games that kicked off up to this long ago are still captured (in play).
+    window_past_hours: int = Field(default=6, ge=0)
+    window_future_days: int = Field(default=8, gt=0)
+    catalog_seconds: int = Field(default=300, gt=0)
+    # Ordered nearest-first; games further out than the last tier use cold_books_seconds.
+    tiers: tuple[CaptureTier, ...] = (
+        CaptureTier(within_minutes=180, books_seconds=15),
+        CaptureTier(within_minutes=36 * 60, books_seconds=60),
+    )
+    cold_books_seconds: int = Field(default=600, gt=0)
+    polymarket: PolymarketCaptureConfig = PolymarketCaptureConfig(
+        book_scope=BookScope.GAME, trades_seconds=2, rate_per_second=4.0
+    )
+    polymarket_us: VenueCaptureConfig = VenueCaptureConfig(rate_per_second=10.0, concurrency=8)
+    kalshi: KalshiCaptureConfig = KalshiCaptureConfig(rate_per_second=4.0)
+    novig: NovigCaptureConfig = NovigCaptureConfig(rate_per_second=2.0, max_levels=20)
+
+    def books_interval(self, minutes_to_start: float) -> int:
+        for tier in sorted(self.tiers, key=lambda t: t.within_minutes):
+            if minutes_to_start <= tier.within_minutes:
+                return tier.books_seconds
+        return self.cold_books_seconds
+
+
 class AppConfig(_Frozen):
     execution: ExecutionConfig = ExecutionConfig()
     paper: PaperConfig = PaperConfig()
     risk: RiskConfig = RiskConfig()
     qualification: QualificationConfig = QualificationConfig()
     cadence_seconds: CadenceConfig = CadenceConfig()
+    capture: CaptureConfig = CaptureConfig()
 
 
 class Secrets(BaseSettings):

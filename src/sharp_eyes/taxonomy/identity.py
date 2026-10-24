@@ -82,7 +82,9 @@ class MarketIdentity(BaseModel):
             self.category in PLAYER_PROP_CATEGORIES or self.category is MarketCategory.TEAM_TOTAL
         )
         if needs_subject != (self.subject is not None):
-            raise TaxonomyError(f"{self.category} subject must be set exactly for props/team totals")
+            raise TaxonomyError(
+                f"{self.category} subject must be set exactly for props/team totals"
+            )
         needs_stat = self.category in {
             MarketCategory.PLAYER_PROP_OTHER,
             MarketCategory.PLAYER_PROP_COMBINATIONS,

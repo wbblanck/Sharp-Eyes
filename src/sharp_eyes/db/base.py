@@ -27,7 +27,7 @@ Price = Numeric(12, 6)
 Money = Numeric(20, 6)
 Quantity = Numeric(24, 6)
 
-JsonB = JSON().with_variant(JSONB(), "postgresql")
+JsonB = JSON().with_variant(JSONB(), "postgresql")  # type: ignore[no-untyped-call]
 
 
 def utcnow() -> datetime:

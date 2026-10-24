@@ -1,0 +1,49 @@
+# Worker + PostgreSQL. `docker compose up -d` runs migrations, then the worker.
+# Put POSTGRES_PASSWORD in a .env file next to this one (see .env.example).
+services:
+  db:
+    image: postgres:16.6
+    restart: unless-stopped
+    # Sized for the 24 GB Oracle Always Free server (see docs/deploy-oracle-free.md).
+    command: ["postgres", "-c", "shared_buffers=4GB", "-c", "effective_cache_size=12GB"]
+    shm_size: 1g
+    environment:
+      POSTGRES_USER: sharp_eyes
+      POSTGRES_DB: sharp_eyes
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Not published to the internet; only the worker reaches it.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sharp_eyes -d sharp_eyes"]
+      interval: 10s
+      retries: 10
+
+  migrate:
+    build: .
+    command: ["sharp-eyes", "migrate"]
+    environment:
+      SHARP_EYES_DATABASE_URL: postgresql+psycopg://sharp_eyes:${POSTGRES_PASSWORD}@db:5432/sharp_eyes
+    depends_on:
+      db:
+        condition: service_healthy
+
+  worker:
+    build: .
+    restart: unless-stopped
+    command: ["sharp-eyes", "capture"]
+    environment:
+      SHARP_EYES_DATABASE_URL: postgresql+psycopg://sharp_eyes:${POSTGRES_PASSWORD}@db:5432/sharp_eyes
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "sharp-eyes", "health", "--max-age", "900"]
+      interval: 5m
+      start_period: 10m
+    logging:
+      driver: json-file
+      options: {max-size: "20m", max-file: "5"}
+
+volumes:
+  pgdata:

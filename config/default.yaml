@@ -34,3 +34,38 @@ cadence_seconds:
   qualification_recalc: 1800
   settlement_polling: 600
   health_check: 60
+
+# Phase 0 data capture (audit recommendation 6). Book polling slows down the
+# further a game is from kickoff; games stay captured through the end of play.
+capture:
+  window_past_hours: 6
+  window_future_days: 8
+  catalog_seconds: 300
+  tiers:
+    - {within_minutes: 180, books_seconds: 15}
+    - {within_minutes: 2160, books_seconds: 60}
+  cold_books_seconds: 600
+  polymarket:
+    rate_per_second: 4          # Gamma catalog
+    clob_rate_per_second: 10    # CLOB books, 500 tokens per request
+    data_rate_per_second: 10    # Data API: documented limit 300 requests / 10 s
+    book_scope: game
+    trades_seconds: 2           # Fast polling doubles as the latency measurement
+    status_seconds: 10
+    trade_overlap_seconds: 120
+    backfill_history: true
+  polymarket_us:
+    rate_per_second: 10         # Documented limit 25 requests / s per IP
+    concurrency: 8
+    book_scope: core
+  kalshi:
+    rate_per_second: 4
+    book_scope: core
+    trades_seconds: 30
+    series: [KXNFLGAME, KXNFLSPREAD, KXNFLTOTAL, KXNFLTEAMTOTAL]
+  novig:
+    rate_per_second: 2          # Unsigned public routes share a per-IP throttle; keep this low
+    book_scope: core
+    trades_seconds: 60
+    max_levels: 20              # The public book returns at most 20 levels
+    market_types: [MONEY, SPREAD, TOTAL, TEAM_TOTAL, SPREAD_1H, TOTAL_1H]

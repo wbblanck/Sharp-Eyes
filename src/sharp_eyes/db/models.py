@@ -19,13 +19,13 @@ from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     Date,
     ForeignKey,
     Index,
     Integer,
-    BigInteger,
     String,
     Text,
     UniqueConstraint,
@@ -33,6 +33,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
+from sharp_eyes.config import PaperExecutionMode
 from sharp_eyes.db.base import Base, CreatedAt, JsonB, Price, Quantity, UUIDPk, enum_column, utcnow
 from sharp_eyes.domain import (
     ActivityClass,
@@ -50,7 +51,6 @@ from sharp_eyes.domain import (
     TradeSide,
     Venue,
 )
-from sharp_eyes.config import PaperExecutionMode
 from sharp_eyes.normalization.events import EventStatus
 from sharp_eyes.normalization.participants import ParticipantKind
 from sharp_eyes.taxonomy.categories import MarketCategory, Period, Sport
@@ -77,7 +77,9 @@ class IngestionRun(UUIDPk, Base):
     records_seen: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     records_new: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # True only when pagination ran to the documented end (e.g. next_cursor null).
-    pagination_complete: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    pagination_complete: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
     error: Mapped[str | None] = mapped_column(Text)
 
 
@@ -249,9 +251,7 @@ class MarketListing(UUIDPk, Base):
     sport_event_id: Mapped[uuid.UUID | None] = _fk("sport_events.id", nullable=True)
     title: Mapped[str] = mapped_column(Text)
     rules_text: Mapped[str | None] = mapped_column(Text)
-    settlement_rules_id: Mapped[uuid.UUID | None] = _fk(
-        "market_settlement_rules.id", nullable=True
-    )
+    settlement_rules_id: Mapped[uuid.UUID | None] = _fk("market_settlement_rules.id", nullable=True)
     status: Mapped[ListingStatus] = enum_column(ListingStatus)
     classification_taxonomy_version: Mapped[str | None] = mapped_column(String(20))
     classification_note: Mapped[str | None] = mapped_column(Text)  # why rejected/uncertain
@@ -332,7 +332,9 @@ class TraderPosition(UUIDPk, Base):
     """Position snapshots as reported by the source, for reconciliation."""
 
     __tablename__ = "trader_positions"
-    __table_args__ = (UniqueConstraint("trader_source_account_id", "market_outcome_id", "observed_at"),)
+    __table_args__ = (
+        UniqueConstraint("trader_source_account_id", "market_outcome_id", "observed_at"),
+    )
 
     trader_source_account_id: Mapped[uuid.UUID] = _fk("trader_source_accounts.id")
     market_outcome_id: Mapped[uuid.UUID] = _fk("market_outcomes.id")
@@ -407,7 +409,9 @@ class TraderQualificationHistory(UUIDPk, Base):
     """Append-only record of every qualification decision (spec 5.6)."""
 
     __tablename__ = "trader_qualification_history"
-    __table_args__ = (Index("ix_tqh_qualification_effective", "trader_qualification_id", "effective_at"),)
+    __table_args__ = (
+        Index("ix_tqh_qualification_effective", "trader_qualification_id", "effective_at"),
+    )
 
     trader_qualification_id: Mapped[uuid.UUID] = _fk("trader_qualifications.id", index=False)
     previous_status: Mapped[QualificationStatus | None] = enum_column(
@@ -449,7 +453,9 @@ class Quote(UUIDPk, Base):
 
 class OrderbookSnapshot(UUIDPk, Base):
     __tablename__ = "orderbook_snapshots"
-    __table_args__ = (Index("ix_orderbook_snapshots_listing_received", "market_listing_id", "received_at"),)
+    __table_args__ = (
+        Index("ix_orderbook_snapshots_listing_received", "market_listing_id", "received_at"),
+    )
 
     market_listing_id: Mapped[uuid.UUID] = _fk("market_listings.id", index=False)
     venue: Mapped[Venue] = enum_column(Venue)
@@ -482,7 +488,9 @@ class OrderbookLevel(Base):
 
 class MarketPriceHistory(UUIDPk, Base):
     __tablename__ = "market_price_history"
-    __table_args__ = (UniqueConstraint("market_outcome_id", "source_method", "resolution_seconds", "ts"),)
+    __table_args__ = (
+        UniqueConstraint("market_outcome_id", "source_method", "resolution_seconds", "ts"),
+    )
 
     market_outcome_id: Mapped[uuid.UUID] = _fk("market_outcomes.id", index=False)
     ts: Mapped[datetime]
