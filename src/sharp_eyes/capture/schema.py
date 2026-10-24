@@ -139,8 +139,10 @@ trades = Table(
     Column("market_id", String(200), nullable=False),
     Column("book_key", String(200), nullable=False),
     _ts("ts", nullable=False),
-    _ts("observed_at", nullable=False),  # First time any poll returned it
-    _ts("prev_poll_at"),  # Previous poll of the same scope that did not return it
+    _ts("observed_at", nullable=False),  # First time any feed returned it
+    _ts("api_observed_at"),  # First time a REST poll returned it
+    _ts("ws_observed_at"),  # When the Polymarket websocket pushed it
+    _ts("prev_poll_at"),  # Previous REST poll of the same scope that did not return it
     Column("price", Price, nullable=False),
     Column("size", Size, nullable=False),  # $1-payout contracts
     Column("side", String(10)),

@@ -60,7 +60,8 @@ three restart automatically after a crash or a reboot.
 docker compose ps                                    # worker should be "healthy" after ~10 min
 docker compose logs -f worker                        # live log
 docker compose exec worker sharp-eyes status         # counts and recent polls per venue
-docker compose exec worker sharp-eyes latency-report --hours 24
+docker compose exec worker sharp-eyes latency-report --hours 24   # poll vs websocket
+docker compose exec worker sharp-eyes rtds-tail --seconds 30      # websocket reachable?
 df -h /                                              # disk use
 ```
 

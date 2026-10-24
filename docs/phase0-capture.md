@@ -12,7 +12,7 @@ happens, which decides whether a 30-second signal limit is achievable.
 
 | Venue | Role | Catalog | Order books | Trades |
 |---|---|---|---|---|
-| Polymarket (international) | Signal source | Gamma, NFL series 12185 | CLOB `POST /books`, 500 tokens per request; every non-prop game market | Data API `/v2/trades` by event, maker and taker fills, polled every 2 s, plus a one-time full-history backfill per event |
+| Polymarket (international) | Signal source | Gamma, NFL series 12185 | CLOB `POST /books`, 500 tokens per request; every non-prop game market | Live-data websocket (`activity`/`trades`, pushed as they happen) for catalog markets, plus Data API `/v2/trades` by event (maker and taker fills, polled every 2 s) to fill its gaps, plus a one-time full-history backfill per event |
 | Polymarket US | Execution | Gateway `/v2/leagues/nfl/events`, then `/v1/events/{id}` | Gateway `/v1/markets/{slug}/book`; full-game moneyline, spread, total | None public. The tape needs an authenticated websocket (API key). Each book row keeps the gateway's market stats (last trade price, size and time, shares traded) |
 | Kalshi | Execution | `/events` for KXNFLGAME, KXNFLSPREAD, KXNFLTOTAL, KXNFLTEAMTOTAL | `/markets/orderbooks`, 100 tickers per request | Global `/markets/trades` tape since the last checkpoint, filtered to those series |
 | Novig | Execution | `/v3/public/catalog/events` and `/markets` (MONEY, SPREAD, TOTAL, TEAM_TOTAL, SPREAD_1H, TOTAL_1H) | `/v3/public/catalog/markets/{id}/book`, 20 levels, ETag-cached | `/v3/public/catalog/markets/{id}/trades` for markets whose catalog volume moved |
@@ -55,10 +55,13 @@ venue's book job running throughout. Treat a gap in `poll_runs` as missing data.
 
 ## Known limits
 
-* **Polymarket trade identity.** The Data API has no trade id. The key is
-  transaction hash + token + wallet + side + price + size + block time, with an
-  ordinal for identical rows in one response. Two genuinely identical fills
-  that arrive in different polls would merge; this has not been observed.
+* **Polymarket trade identity.** Neither feed has a trade id. The key is
+  transaction hash + token + wallet + side + price + size (numbers in canonical
+  form, so the websocket's `200` and the Data API's `200.0` match), with an
+  ordinal for identical rows in one response (or, on the websocket, within 15
+  minutes). Two genuinely identical fills that arrive in different polls would
+  merge; this has not been observed. Each row keeps the first sighting per feed
+  (`api_observed_at`, `ws_observed_at`); `observed_at` is the earlier of the two.
 * **Polymarket maker or taker.** `seen_in_taker_feed` is true when the fill
   also appears with `taker_only=true`. Rows only in the full feed are maker
   fills, except when a taker row arrived between the two passes (rare; it is
@@ -77,11 +80,16 @@ venue's book job running throughout. Treat a gap in `poll_runs` as missing data.
   `/v2/status` reported only 2 to 4 seconds of lag. Each poll therefore re-reads
   the last 10 minutes (`trade_overlap_seconds`). See
   `docs/reports/2026-10-24-polymarket-latency.md`.
-* **Faster signal source not yet used.** Polymarket's live-data websocket
-  (`wss://ws-live-data.polymarket.com`, topic `activity`/`trades`) pushes
-  wallet-attributed fills for all markets in under a second. It is a likely
-  Phase 1 addition, with `/v2/trades` kept for reconciliation; whether it
-  includes maker fills is unverified.
+* **The websocket is new and not yet measured.** The worker subscribes to
+  Polymarket's live-data websocket (`wss://ws-live-data.polymarket.com`,
+  `activity`/`trades`, unfiltered, about one message per fill on all of
+  Polymarket) and keeps fills in catalog markets. It reconnects with backoff and
+  treats a minute of silence as a stall. Each connected minute is an `rtds` row
+  in `poll_runs`, and a drop is a failed row. Still unverified: whether it
+  carries maker fills (the poll keeps them either way), and whether every
+  message has a transaction hash (fills without one are left to the poll). The
+  `latency-report` coverage line answers both. Set `capture.polymarket.rtds:
+  false` to turn it off.
 * **Kalshi trades poll can hit 429.** The global tape is rate-limited per IP;
   a failed poll is retried next cycle from the same checkpoint, so nothing is
   lost.
@@ -96,6 +104,7 @@ sharp-eyes capture                    # run the worker (Ctrl-C or SIGTERM to sto
 sharp-eyes status --hours 1           # row counts and recent polls per venue
 sharp-eyes health --max-age 900       # exit 1 if a venue stopped polling
 sharp-eyes latency-report --hours 24 --out latency.md
+sharp-eyes rtds-tail --seconds 30 --slug nfl-   # print websocket fills (connectivity check)
 ```
 
 ## Detection latency method
@@ -113,4 +122,12 @@ upper bound = observed_at  - block time
 The upper bound is what a copy signal would experience with this setup. The
 lower bound shows how much is the API rather than our polling. Block times are
 whole seconds, so both carry up to one second of rounding. Backfilled rows and
-the first poll of each event carry no bounds and are excluded.
+the first poll of each event carry no bounds and are excluded. These use
+`api_observed_at`, so the poll is still measured on its own when the websocket
+saw a fill first.
+
+For the websocket, latency is `ws_observed_at - block time`. Fills seen by both
+feeds are compared head to head (`api_observed_at - ws_observed_at`), and
+coverage counts fills seen by both, by the socket only and by the poll only
+(split into taker and maker), over block times inside minutes the socket was
+connected.

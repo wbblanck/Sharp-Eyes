@@ -20,9 +20,9 @@ from decimal import Decimal
 from typing import Any
 
 from sharp_eyes.capture.http import VenueHttp
-from sharp_eyes.capture.records import BetType, BookSnapshot, MarketRecord
+from sharp_eyes.capture.records import BetType, BookSnapshot, MarketRecord, TradeRecord
 from sharp_eyes.capture.store import CaptureStore
-from sharp_eyes.capture.venues import kalshi, novig, polymarket, polymarket_us
+from sharp_eyes.capture.venues import kalshi, novig, polymarket, polymarket_rtds, polymarket_us
 from sharp_eyes.capture.venues.base import VenueAdapter, chunks
 from sharp_eyes.config import AppConfig, BookScope, CaptureConfig, VenueCaptureConfig
 
@@ -265,10 +265,53 @@ class PolymarketRunner(VenueRunner):
                 await self._run_job("backfill", run)
             await asyncio.sleep(60)
 
+    async def _safely(self, what: str, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> None:
+        try:
+            await asyncio.to_thread(fn, *args, **kwargs)
+        except Exception:
+            log.exception("%s %s failed", self.venue, what)
+
+    async def rtds_loop(self, stream: polymarket_rtds.RtdsTradeStream | None = None) -> None:
+        """Websocket fills for catalog markets, merged with the poll's rows in the store."""
+        await self.catalog_ready.wait()
+        stream = stream or polymarket_rtds.RtdsTradeStream()
+
+        def wanted(trade: TradeRecord) -> bool:
+            return trade.market_id in self.markets  # NFL catalog markets only
+
+        async def store(trades: list[TradeRecord]) -> None:
+            # A failed write is not retried: the poll stores the same fills.
+            await self._safely("storing RTDS trades", self.store.insert_trades, trades)
+
+        async def record(session: polymarket_rtds.Session) -> None:
+            await self._safely(
+                "recording an RTDS session",
+                self.store.record_poll,
+                self.venue,
+                "rtds",
+                session.started_at,
+                session.finished_at,
+                ok=session.ok,
+                items=session.messages,
+                changed=session.kept,
+                error=session.error,
+            )
+
+        while True:
+            try:
+                await stream.run(wanted, store, record)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.exception("RTDS stream crashed; restarting")
+                await asyncio.sleep(5)
+
     def tasks(self) -> list[Coroutine[Any, Any, None]]:
         out = [*super().tasks(), self.status_loop()]
         if self.cfg.backfill_history:
             out.append(self.backfill_loop())
+        if self.cfg.rtds:
+            out.append(self.rtds_loop())
         return out
 
 

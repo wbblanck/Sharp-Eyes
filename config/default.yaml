@@ -54,6 +54,7 @@ capture:
     status_seconds: 10
     trade_overlap_seconds: 600  # Re-read window; fills showed up to ~2 min late in testing
     backfill_history: true
+    rtds: true                  # Live-data websocket for fills; the poll above fills its gaps
   polymarket_us:
     rate_per_second: 10         # Documented limit 25 requests / s per IP
     concurrency: 8

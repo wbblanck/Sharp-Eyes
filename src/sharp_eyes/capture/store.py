@@ -176,7 +176,12 @@ class CaptureStore:
     # -- trades ----------------------------------------------------------
 
     def insert_trades(self, trades: Sequence[TradeRecord]) -> int:
-        """Insert new trades; mark taker rows. Returns the number of new trades."""
+        """Insert new trades and merge sightings of known ones.
+
+        A fill seen again keeps its first ``observed_at`` overall and gains the
+        first sighting of the other feed (REST poll or websocket), plus the
+        taker mark. Returns the number of new trades.
+        """
         if not trades:
             return 0
         rows = list(
@@ -188,6 +193,8 @@ class CaptureStore:
                     "book_key": t.book_key,
                     "ts": t.ts,
                     "observed_at": t.observed_at or t.ts,
+                    "api_observed_at": (t.observed_at or t.ts) if t.source == "api" else None,
+                    "ws_observed_at": (t.observed_at or t.ts) if t.source == "ws" else None,
                     "prev_poll_at": t.prev_poll_at,
                     "price": t.price,
                     "size": t.size,
@@ -205,11 +212,32 @@ class CaptureStore:
         with self.engine.begin() as conn:
             for start in range(0, len(rows), BATCH):
                 ins = insert(s.trades).values(rows[start : start + BATCH])
+                old, new_ = s.trades.c, ins.excluded
                 stmt: Any = ins.on_conflict_do_update(
                     index_elements=["venue", "trade_key"],
-                    set_={"seen_in_taker_feed": True},
-                    where=(ins.excluded.seen_in_taker_feed.is_(True))
-                    & s.trades.c.seen_in_taker_feed.isnot_distinct_from(False),
+                    set_={
+                        "observed_at": func.least(old.observed_at, new_.observed_at),
+                        "api_observed_at": func.coalesce(old.api_observed_at, new_.api_observed_at),
+                        "ws_observed_at": func.coalesce(old.ws_observed_at, new_.ws_observed_at),
+                        # Latency bounds belong to the first REST poll that returned it.
+                        "prev_poll_at": case(
+                            (old.api_observed_at.is_(None), new_.prev_poll_at),
+                            else_=old.prev_poll_at,
+                        ),
+                        "seen_in_taker_feed": case(
+                            (new_.seen_in_taker_feed.is_(True), True),
+                            else_=func.coalesce(old.seen_in_taker_feed, new_.seen_in_taker_feed),
+                        ),
+                    },
+                    # Only touch rows that gain something, so the 10-minute
+                    # re-read every 2 s does not rewrite every recent fill.
+                    where=(
+                        new_.seen_in_taker_feed.is_(True)
+                        & old.seen_in_taker_feed.is_distinct_from(True)
+                    )
+                    | (old.seen_in_taker_feed.is_(None) & new_.seen_in_taker_feed.isnot(None))
+                    | (old.api_observed_at.is_(None) & new_.api_observed_at.isnot(None))
+                    | (old.ws_observed_at.is_(None) & new_.ws_observed_at.isnot(None)),
                 ).returning(literal_column("(xmax = 0)").label("inserted"))
                 new += sum(1 for (inserted,) in conn.execute(stmt).all() if inserted)
         return new

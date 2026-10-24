@@ -69,21 +69,28 @@ MARKET_TYPES: dict[str, tuple[BetType, Period]] = {
 }
 
 
+def _num(value: Any) -> str:
+    """Canonical text for a price or size, so ``200``, ``200.0`` and ``"200"`` match."""
+    d = dec(value)
+    return "" if d is None else format(d.normalize(), "f")
+
+
 def trade_key(row: dict[str, Any], ordinal: int) -> str:
     """Composite key: the Data API has no native trade id.
 
     ``transaction_hash`` alone is not unique (one transaction settles several
     fills, and the maker rows share it). Identical rows inside one response
     (same tx, wallet, token, side, price, size) are told apart by ``ordinal``.
+    The block time is left out (the transaction fixes it) and numbers are
+    canonicalised, so the websocket and the Data API key the same fill alike.
     """
     parts = [
-        row.get("transaction_hash", ""),
-        row.get("token_id", ""),
-        row.get("proxy_wallet", "").lower(),
-        row.get("side", ""),
-        repr(row.get("price")),
-        repr(row.get("size")),
-        str(row.get("timestamp", "")),
+        (row.get("transaction_hash") or "").lower(),
+        str(row.get("token_id", "")),
+        (row.get("proxy_wallet") or "").lower(),
+        str(row.get("side", "")).upper(),
+        _num(row.get("price")),
+        _num(row.get("size")),
         str(ordinal),
     ]
     return "|".join(parts)
@@ -183,6 +190,7 @@ def parse_trade(
     observed_at: datetime,
     prev_poll_at: datetime | None,
     taker: bool | None,
+    source: str = "api",
 ) -> TradeRecord | None:
     price, size = dec(row.get("price")), dec(row.get("size"))
     if price is None or size is None or not row.get("timestamp"):
@@ -202,6 +210,7 @@ def parse_trade(
         seen_in_taker_feed=taker,
         observed_at=observed_at,
         prev_poll_at=prev_poll_at,
+        source=source,
     )
 
 

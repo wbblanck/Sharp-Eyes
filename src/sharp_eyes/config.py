@@ -139,6 +139,7 @@ class PolymarketCaptureConfig(VenueCaptureConfig):
     status_seconds: int = Field(default=10, gt=0)
     trade_overlap_seconds: int = Field(default=600, ge=0)
     backfill_history: bool = True
+    rtds: bool = True  # Live-data websocket beside the /v2/trades poll
 
 
 class KalshiCaptureConfig(VenueCaptureConfig):

@@ -38,3 +38,27 @@ async def test_catalog_and_books(adapter: VenueAdapter) -> None:
     books = await adapter.fetch_books(core[:3])
     assert books  # Thin alt lines can be empty, so only check that books came back
     await adapter.aclose()
+
+
+async def test_rtds_pushes_fills() -> None:
+    import asyncio
+
+    from sharp_eyes.capture.records import TradeRecord
+    from sharp_eyes.capture.venues.polymarket_rtds import RtdsTradeStream, Session
+
+    got: list[TradeRecord] = []
+
+    async def keep(trades: list[TradeRecord]) -> None:
+        got.extend(trades)
+
+    async def ignore(_: Session) -> None:
+        return None
+
+    task = asyncio.create_task(RtdsTradeStream().run(lambda t: True, keep, ignore))
+    for _ in range(60):
+        if got:
+            break
+        await asyncio.sleep(0.5)
+    task.cancel()
+    assert got, "no fill pushed in 30 s (all of Polymarket)"
+    assert got[0].wallet and got[0].tx_hash

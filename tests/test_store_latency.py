@@ -114,3 +114,53 @@ def test_latency_report_brackets_visibility(clean_engine: Engine) -> None:
     assert report.share_visible_within["10s"] == pytest.approx(0.8)
     assert report.trade_polls["polls"] == 2 and report.api_status_lag["p50"] == 1.5
     assert "detection latency" in report.to_markdown()
+
+
+def sighting(key: str, source: str, lag: float, taker: bool | None = None) -> TradeRecord:
+    ts = NOW - timedelta(seconds=60)
+    prev = ts + timedelta(seconds=lag - 2) if source == "api" else None
+    return TradeRecord(
+        CaptureVenue.POLYMARKET, key, "0xml", "111", ts, D("0.6"), D("5"), side="BUY",
+        wallet="0xa", raw={"k": key}, seen_in_taker_feed=taker,
+        observed_at=ts + timedelta(seconds=lag), prev_poll_at=prev, source=source,
+    )  # fmt: skip
+
+
+def test_feeds_merge_into_one_row_with_both_sightings(clean_engine: Engine) -> None:
+    store = CaptureStore(clean_engine)
+    assert store.insert_trades([sighting("a", "ws", 0.5)]) == 1
+    assert store.insert_trades([sighting("a", "api", 12, taker=True)]) == 0
+    assert store.insert_trades([sighting("b", "api", 9, taker=False)]) == 1
+    assert store.insert_trades([sighting("b", "ws", 0.4), sighting("a", "api", 30)]) == 0
+    with clean_engine.connect() as conn:
+        rows = {r["trade_key"]: r for r in conn.execute(select(s.trades)).mappings()}
+    ts = NOW - timedelta(seconds=60)
+    a, b = rows["a"], rows["b"]
+    assert a["observed_at"] == a["ws_observed_at"] == ts + timedelta(seconds=0.5)
+    assert a["api_observed_at"] == ts + timedelta(seconds=12)  # First poll only
+    assert a["prev_poll_at"] == ts + timedelta(seconds=10) and a["seen_in_taker_feed"] is True
+    assert b["observed_at"] == b["ws_observed_at"] == ts + timedelta(seconds=0.4)
+    assert b["api_observed_at"] == ts + timedelta(seconds=9) and b["seen_in_taker_feed"] is False
+
+
+def test_latency_report_compares_websocket_and_poll(clean_engine: Engine) -> None:
+    store = CaptureStore(clean_engine)
+    store.insert_trades([sighting(f"t{i}", "ws", 0.5 + i / 10) for i in range(4)])
+    store.insert_trades(
+        [sighting(f"t{i}", "api", 10 + i, taker=True) for i in range(3)]
+        + [sighting("maker", "api", 10, taker=False)]
+    )
+    store.record_poll("POLYMARKET", "rtds", NOW - timedelta(minutes=2), NOW, ok=True, items=50)
+    store.record_poll("POLYMARKET", "rtds", NOW, NOW, ok=False, error="ConnectionClosed")
+
+    report = build_report(clean_engine, NOW - timedelta(hours=1), NOW + timedelta(hours=1))
+    r = report.rtds
+    assert r["samples"] == 4 and r["drops"] == 1 and r["connected_minutes"] == 2.0
+    assert r["latency"]["max"] == pytest.approx(0.8)
+    assert r["head_to_head"]["p50"] == pytest.approx(10.4)  # 10..12 s minus 0.5..0.7 s
+    assert r["ws_first"] == 1.0
+    assert r["coverage"] == {
+        "both": 3, "ws_only": 1, "api_only": 1, "api_only_taker": 0, "api_only_maker": 1
+    }  # fmt: skip
+    assert report.samples == 4  # The poll's own bracket still uses its first sighting
+    assert "Live-data websocket" in report.to_markdown()
