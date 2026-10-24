@@ -172,11 +172,11 @@ full Sunday slate captured on Oracle, with CLV computed after kickoff.
   position is not modelled. Every venue is assumed to fill at the displayed
   depth.
 
-## Open decision for Will
+## Decision: contingency-only differences
 
 `copyability.accept_contingency_differences: true` lets the report score
 matches that differ only in postponement or cancellation handling. Without it,
-**no** Polymarket wager is copyable anywhere, because Polymarket keeps
-postponed games open indefinitely. The risk config still requires `EXACT` for
-any future automated execution. Keep this for research, or require EXACT
-everywhere?
+**no** Polymarket wager would be copyable anywhere, because Polymarket keeps
+postponed games open indefinitely. Will chose to keep it on for research on
+2026-10-24. The risk config still requires `EXACT` for any future automated
+execution.
