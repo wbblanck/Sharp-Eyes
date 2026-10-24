@@ -45,6 +45,7 @@ ignore = ["S101"]
 "tests/**" = ["S", "DTZ", "E501"]
 # SQL text there only interpolates the fixed schema name constant.
 "src/sharp_eyes/capture/**" = ["S608"]
+"src/sharp_eyes/copyability/store.py" = ["S608"]
 "src/sharp_eyes/cli.py" = ["S608"]
 "migrations/**" = ["E501"]
 

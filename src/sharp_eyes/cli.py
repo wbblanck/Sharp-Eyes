@@ -57,6 +57,20 @@ def cmd_latency(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_copyability(args: argparse.Namespace) -> int:
+    from sharp_eyes.copyability.report import build_report as build_copyability
+
+    config = load_config(args.config)
+    end = datetime.now(UTC) - timedelta(hours=args.end_hours_ago)
+    report = build_copyability(make_engine(), config, end - timedelta(hours=args.hours), end)
+    body = report.to_json() if args.format == "json" else report.to_markdown()
+    if args.out:
+        Path(args.out).write_text(body)
+    else:
+        sys.stdout.write(body)
+    return 0
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     """Per-venue counts and last successful poll of each job."""
     engine = make_engine()
@@ -148,6 +162,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--format", choices=("md", "json"), default="md")
     p.add_argument("--out")
     p.set_defaults(fn=cmd_latency)
+
+    p = sub.add_parser(
+        "copyability-report", help="re-price Polymarket wagers at what a follower could buy"
+    )
+    p.add_argument("--hours", type=float, default=72.0, help="window length (block time)")
+    p.add_argument("--end-hours-ago", type=float, default=0.0, help="end the window this long ago")
+    p.add_argument("--format", choices=("md", "json"), default="md")
+    p.add_argument("--out")
+    p.set_defaults(fn=cmd_copyability)
 
     p = sub.add_parser("status", help="capture counts and recent polls")
     p.add_argument("--hours", type=float, default=1.0)

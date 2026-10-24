@@ -11,9 +11,12 @@ is disabled in code (`src/sharp_eyes/safety.py`).
 * **Phase 0, data capture (running):** an always-on worker records NFL
   catalogs, order books and trades on all four venues, and measures Polymarket
   Data API detection latency. See [docs/phase0-capture.md](docs/phase0-capture.md).
-* **Phase 1, foundation (draft):** canonical schema, taxonomy and
-  normalization under `src/sharp_eyes/{db,taxonomy,normalization}`, to be
-  revised per the spec audit before it gets migrations.
+* **Phase 1, copyability (in review):** reviewed settlement templates for
+  every core NFL market type on all four venues, a cross-venue matcher, and
+  `sharp-eyes copyability-report`, which re-prices each Polymarket wager at
+  what a follower could have bought after the delay, with fees, and scores it
+  against the close. See [docs/phase1-copyability.md](docs/phase1-copyability.md).
+  The canonical schema under `src/sharp_eyes/db` still has no migrations.
 
 ## Quick start (local)
 

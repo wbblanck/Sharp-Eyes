@@ -11,11 +11,14 @@ import os
 from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+if TYPE_CHECKING:
+    from sharp_eyes.copyability.score import CopyabilitySettings
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "default.yaml"
 
@@ -183,6 +186,46 @@ class CaptureConfig(_Frozen):
         return self.cold_books_seconds
 
 
+class CopyabilityConfig(_Frozen):
+    """Follower re-pricing of source wagers (audit recommendation 2)."""
+
+    reaction_seconds: float = Field(default=5.0, ge=0)  # From first detection to the order
+    # Worst-case book staleness accepted, i.e. the capture tier interval at that time.
+    max_quote_age_seconds: int = Field(default=600, gt=0)
+    wager_window_seconds: float = Field(default=60.0, gt=0)  # Max gap between fills of one wager
+    min_notional_usd: Decimal = Decimal("100")
+    target_venues: tuple[str, ...] = ("POLYMARKET_US", "KALSHI", "NOVIG")
+    # Accept contracts that differ only in postponement or cancellation terms.
+    accept_contingency_differences: bool = True
+    require_complete_fill: bool = True
+
+    @field_validator("target_venues")
+    @classmethod
+    def _execution_venues(cls, v: tuple[str, ...]) -> tuple[str, ...]:
+        allowed = {"POLYMARKET_US", "KALSHI", "NOVIG"}
+        if not v or set(v) - allowed:
+            # International Polymarket is close-only for US persons (audit rec. 1).
+            raise ValueError(f"target_venues must be a non-empty subset of {sorted(allowed)}")
+        return v
+
+    def settings(self, stake_usd: Decimal) -> CopyabilitySettings:
+        from sharp_eyes.capture.records import CaptureVenue
+        from sharp_eyes.copyability.score import CopyabilitySettings
+        from sharp_eyes.domain import MatchState
+
+        states = [MatchState.EXACT]
+        if self.accept_contingency_differences:
+            states.append(MatchState.EQUIVALENT_WITH_RULE_DIFFERENCE)
+        return CopyabilitySettings(
+            stake_usd=stake_usd,
+            reaction_seconds=self.reaction_seconds,
+            max_quote_age_seconds=self.max_quote_age_seconds,
+            target_venues=tuple(CaptureVenue(v) for v in self.target_venues),
+            accept_states=tuple(states),
+            require_complete_fill=self.require_complete_fill,
+        )
+
+
 class AppConfig(_Frozen):
     execution: ExecutionConfig = ExecutionConfig()
     paper: PaperConfig = PaperConfig()
@@ -190,6 +233,7 @@ class AppConfig(_Frozen):
     qualification: QualificationConfig = QualificationConfig()
     cadence_seconds: CadenceConfig = CadenceConfig()
     capture: CaptureConfig = CaptureConfig()
+    copyability: CopyabilityConfig = CopyabilityConfig()
 
 
 class Secrets(BaseSettings):

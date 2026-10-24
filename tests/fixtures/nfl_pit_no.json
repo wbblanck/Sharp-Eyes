@@ -1,0 +1,378 @@
+{
+ "source": "Live public catalogs, Steelers @ Saints, read 2026-10-24; trimmed to the fields the code reads.",
+ "polymarket": {
+  "id": "1022434",
+  "title": "Steelers vs. Saints",
+  "slug": "nfl-pit-no-2026-10-25",
+  "startTime": "2026-10-25T13:30:00Z",
+  "endDate": "2026-10-25T13:30:00Z",
+  "closed": false,
+  "ended": null,
+  "live": null,
+  "teams": [
+   {
+    "name": "Pittsburgh Steelers",
+    "abbreviation": "pit",
+    "ordering": "away"
+   },
+   {
+    "name": "New Orleans Saints",
+    "abbreviation": "no",
+    "ordering": "home"
+   }
+  ],
+  "markets": [
+   {
+    "id": "4551269",
+    "question": "Steelers vs. Saints",
+    "conditionId": "0xf21c1426d2f0d964ae4c7bea7b320087ca9685d086202e0a1e62bf1dc4dcbf64",
+    "slug": "nfl-pit-no-2026-10-25",
+    "outcomes": "[\"Steelers\", \"Saints\"]",
+    "clobTokenIds": "[\"115700113006785753352548302007769096699086928102312992900278010746804635156828\", \"16013029087006534797924862977185419395437649810045162973335886530817974510015\"]",
+    "sportsMarketType": "moneyline",
+    "line": null,
+    "description": "In the upcoming NFL football game between Steelers and Saints, scheduled for October 25 at 9:30AM ET:\nThis market will resolve to \"Steelers\" if Steelers win the game.\nThis market will resolve to \"Saints\" if Saints win the game.\nOvertime is included if played.\nIf the game ends in a tie, this market will resolve 50-50.\nIf the game is postponed, this market will remain open until the game has been completed.\nIf the game is canceled entirely, with no make-up game, this market will resolve 50-50.",
+    "closed": false,
+    "acceptingOrders": true,
+    "gameStartTime": "2026-10-25 13:30:00+00",
+    "feeSchedule": {
+     "exponent": 1,
+     "rate": 0.03,
+     "takerOnly": true,
+     "rebateRate": 0.15
+    },
+    "orderMinSize": 5,
+    "orderPriceMinTickSize": 0.01
+   },
+   {
+    "id": "5377626",
+    "question": "Spread: Steelers (-3.5)",
+    "conditionId": "0xaca16da7fc4fc342be4f2a2f2bd7cb720a6c29afb9ae6f53fe7c8a03f364fcc1",
+    "slug": "nfl-pit-no-2026-10-25-spread-away-3pt5",
+    "outcomes": "[\"Steelers\", \"Saints\"]",
+    "clobTokenIds": "[\"21560624355930447323593977842353246818391158819531185964539144691463428387856\", \"115684644489885125783803980940101200331526828988262197990119564302656959974215\"]",
+    "sportsMarketType": "spreads",
+    "line": -3.5,
+    "description": "In the upcoming NFL football game between Steelers and Saints, scheduled for October 25 at 9:30 AM ET:\n\nThis market will resolve to \"Steelers\" if the Steelers win the game by 4 or more points.\n\nOtherwise, this market will resolve to \"Saints\".\n\nOvertime is included if played.\n\nIf the game is postponed, this market will remain open until the game has been completed. If the game is canceled entirely, with no make-up game, this market will resolve 50-50.",
+    "closed": false,
+    "acceptingOrders": true,
+    "gameStartTime": "2026-10-25 13:30:00+00",
+    "feeSchedule": {
+     "exponent": 1,
+     "rate": 0.03,
+     "takerOnly": true,
+     "rebateRate": 0.15
+    },
+    "orderMinSize": 5,
+    "orderPriceMinTickSize": 0.01
+   },
+   {
+    "id": "5377804",
+    "question": "Steelers vs. Saints: O/U 44.5",
+    "conditionId": "0xf1c0d24c097f6ad7004302ecfa27d3b7ad922e768548bdfbfc6b84d79a5cd9b3",
+    "slug": "nfl-pit-no-2026-10-25-total-44pt5",
+    "outcomes": "[\"Over\", \"Under\"]",
+    "clobTokenIds": "[\"20108661155071570594444680652196909452826638944315724736245731662105732712556\", \"104126468026072617362497811412384184436384452019189917685719060848234399473961\"]",
+    "sportsMarketType": "totals",
+    "line": 44.5,
+    "description": "In the upcoming NFL game, scheduled for October 25 at 9:30 AM ET:\n\nThis market will resolve to \"Over\" if the Steelers and Saints combine to score 45 or more points in this game.\n\nIf the combined total is less than 45, this market will resolve to \"Under\".\n\nIf the game is postponed, this market will remain open until the game has been completed. If the game is canceled entirely, with no make-up game, this market will resolve 50-50.",
+    "closed": false,
+    "acceptingOrders": true,
+    "gameStartTime": "2026-10-25 13:30:00+00",
+    "feeSchedule": {
+     "exponent": 1,
+     "rate": 0.03,
+     "takerOnly": true,
+     "rebateRate": 0.15
+    },
+    "orderMinSize": 5,
+    "orderPriceMinTickSize": 0.01
+   }
+  ]
+ },
+ "kalshi": {
+  "KXNFLGAME": {
+   "event_ticker": "KXNFLGAME-26OCT25PITNO",
+   "series_ticker": "KXNFLGAME",
+   "title": "Pittsburgh vs New Orleans",
+   "markets": [
+    {
+     "ticker": "KXNFLGAME-26OCT25PITNO-NO",
+     "event_ticker": "KXNFLGAME-26OCT25PITNO",
+     "title": "New Orleans wins",
+     "yes_sub_title": "New Orleans",
+     "no_sub_title": "New Orleans",
+     "floor_strike": null,
+     "strike_type": "structured",
+     "status": "active",
+     "rules_primary": "If New Orleans wins the Pittsburgh vs New Orleans Pro Football game originally scheduled for Oct 25, 2026, then the market resolves to Yes.",
+     "expected_expiration_time": "2026-10-25T16:30:00Z"
+    },
+    {
+     "ticker": "KXNFLGAME-26OCT25PITNO-PIT",
+     "event_ticker": "KXNFLGAME-26OCT25PITNO",
+     "title": "Pittsburgh wins",
+     "yes_sub_title": "Pittsburgh",
+     "no_sub_title": "Pittsburgh",
+     "floor_strike": null,
+     "strike_type": "structured",
+     "status": "active",
+     "rules_primary": "If Pittsburgh wins the Pittsburgh vs New Orleans Pro Football game originally scheduled for Oct 25, 2026, then the market resolves to Yes.",
+     "expected_expiration_time": "2026-10-25T16:30:00Z"
+    }
+   ]
+  },
+  "KXNFLSPREAD": {
+   "event_ticker": "KXNFLSPREAD-26OCT25PITNO",
+   "series_ticker": "KXNFLSPREAD",
+   "title": "Pittsburgh vs New Orleans: Spread",
+   "markets": [
+    {
+     "ticker": "KXNFLSPREAD-26OCT25PITNO-PIT4",
+     "event_ticker": "KXNFLSPREAD-26OCT25PITNO",
+     "title": "Pittsburgh wins by over 3.5 points?",
+     "yes_sub_title": "Pittsburgh wins by over 3.5 points",
+     "no_sub_title": "Pittsburgh wins by over 3.5 points",
+     "floor_strike": 3.5,
+     "strike_type": "greater",
+     "status": "active",
+     "rules_primary": "If Pittsburgh wins by more than 3.5 points in the Pittsburgh vs New Orleans Pro Football game originally scheduled for Oct 25, 2026, then the market resolves to Yes.",
+     "expected_expiration_time": "2026-10-25T16:30:00Z"
+    }
+   ]
+  },
+  "KXNFLTOTAL": {
+   "event_ticker": "KXNFLTOTAL-26OCT25PITNO",
+   "series_ticker": "KXNFLTOTAL",
+   "title": "Pittsburgh vs New Orleans: Total Points",
+   "markets": [
+    {
+     "ticker": "KXNFLTOTAL-26OCT25PITNO-45",
+     "event_ticker": "KXNFLTOTAL-26OCT25PITNO",
+     "title": "Full Game: over 44.5 points scored?",
+     "yes_sub_title": "Over 44.5 points",
+     "no_sub_title": "Over 44.5 points",
+     "floor_strike": 44.5,
+     "strike_type": "greater",
+     "status": "active",
+     "rules_primary": "If Pittsburgh and New Orleans collectively score more than 44.5 points in the Pittsburgh vs New Orleans Pro Football game originally scheduled for Oct 25, 2026, then the market resolves to Yes.",
+     "expected_expiration_time": "2026-10-25T16:30:00Z"
+    }
+   ]
+  }
+ },
+ "polymarket_us": {
+  "id": "154442",
+  "slug": "nfl-pit-no-2026-10-25",
+  "title": "PIT Steelers vs. NO Saints",
+  "startTime": "2026-10-25T13:30:00Z",
+  "startDate": "2026-10-25T13:30:00Z",
+  "closed": false,
+  "ended": null,
+  "live": null,
+  "teams": [
+   {
+    "abbreviation": "pit",
+    "name": "Pittsburgh Steelers"
+   },
+   {
+    "abbreviation": "no",
+    "name": "New Orleans Saints"
+   }
+  ],
+  "markets": [
+   {
+    "id": "1425205",
+    "slug": "asc-nfl-pit-no-2026-10-25-pos-3pt5",
+    "question": "Will the Pittsburgh Steelers cover 3.5 vs the New Orleans Saints in PIT Steelers vs. NO Saints?",
+    "title": "New Orleans Saints wins by over 3.5 points",
+    "description": "This market will settle to Yes if Pittsburgh Steelers covers a +3.5 point spread in the Pittsburgh Steelers vs New Orleans Saints professional football game scheduled for October 25, 2026 at 9:30AM ET (as of the listing of the event's first instrument). Overtime is included if played. If the game is delayed, postponed, suspended or otherwise rescheduled to a date and time not within two days of the originally scheduled date and time, the market will settle to the last fair market price. Outcome sourced from the relevant governing body.",
+    "sportsMarketType": "football_team_full_game_spread",
+    "line": 3.5,
+    "active": true,
+    "closed": false,
+    "gameStartTime": "2026-10-25T13:30:00Z",
+    "feeCoefficient": 0.0695,
+    "minimumTradeQty": 0.01,
+    "orderPriceMinTickSize": 0.005,
+    "marketSides": [
+     {
+      "description": "+3.50",
+      "long": true,
+      "team": {
+       "abbreviation": "pit",
+       "name": "Pittsburgh Steelers"
+      }
+     },
+     {
+      "description": "-3.50",
+      "long": false,
+      "team": {
+       "abbreviation": "no",
+       "name": "New Orleans Saints"
+      }
+     }
+    ]
+   },
+   {
+    "id": "1358481",
+    "slug": "aec-nfl-pit-no-2026-10-25",
+    "question": "Who will win in the upcoming football event Pittsburgh Steelers vs New Orleans Saints scheduled for October 25, 2026 at 1:30 PM UTC?",
+    "title": "PIT Steelers vs NO Saints",
+    "description": "This market will settle to the winner of the Pittsburgh Steelers vs New Orleans Saints NFL game scheduled for Oct 25, 2026. Overtime is included if played. If the game ends in a tie, the market will settle to $0.50. If the game is delayed, postponed, or suspended and not rescheduled to a date within two weeks of the originally scheduled date, the market will settle to the last fair market price. Outcome sourced from NFL.",
+    "sportsMarketType": "football_team_full_game_winner",
+    "line": null,
+    "active": true,
+    "closed": false,
+    "gameStartTime": "2026-10-25T13:30:00Z",
+    "feeCoefficient": 0.0695,
+    "minimumTradeQty": 0.01,
+    "orderPriceMinTickSize": 0.0025,
+    "marketSides": [
+     {
+      "description": "Steelers",
+      "long": true,
+      "team": {
+       "abbreviation": "pit",
+       "name": "Pittsburgh Steelers"
+      }
+     },
+     {
+      "description": "Saints",
+      "long": false,
+      "team": {
+       "abbreviation": "no",
+       "name": "New Orleans Saints"
+      }
+     }
+    ]
+   },
+   {
+    "id": "1426661",
+    "slug": "tsc-nfl-pit-no-2026-10-25-total-44pt5",
+    "question": "Will the total in PIT Steelers vs. NO Saints be more than 44.5?",
+    "title": "Over 44.5 total points",
+    "description": "This market will settle to Yes if Pittsburgh Steelers and New Orleans Saints combine for over 44.5 points in the Pittsburgh Steelers vs New Orleans Saints professional football game scheduled for October 25, 2026 at 9:30AM ET (as of the listing of the event's first instrument). Overtime is included if played. If the game is delayed, postponed, suspended or otherwise rescheduled to a date and time not within two days of the originally scheduled date and time, the market will settle to the last fair market price. Outcome sourced from the relevant governing body.",
+    "sportsMarketType": "football_team_full_game_total",
+    "line": 44.5,
+    "active": true,
+    "closed": false,
+    "gameStartTime": "2026-10-25T13:30:00Z",
+    "feeCoefficient": 0.0695,
+    "minimumTradeQty": 0.01,
+    "orderPriceMinTickSize": 0.005,
+    "marketSides": [
+     {
+      "description": "Over",
+      "long": true,
+      "team": null
+     },
+     {
+      "description": "Under",
+      "long": false,
+      "team": null
+     }
+    ]
+   }
+  ]
+ },
+ "novig": {
+  "event": {
+   "eventId": "01a136e2-e717-7c30-807e-7952b04dee72",
+   "description": "Pittsburgh Steelers @ New Orleans Saints",
+   "sport": "FOOTBALL",
+   "league": "NFL",
+   "status": "OPEN_PREGAME",
+   "startsTs": 1792935000000
+  },
+  "markets": [
+   {
+    "marketId": "01a136e2-e79d-7533-a2bd-8de59fd7fffd",
+    "description": "NO +3.5",
+    "eventId": "01a136e2-e717-7c30-807e-7952b04dee72",
+    "marketType": "SPREAD",
+    "strike": "3.5",
+    "status": "OPEN",
+    "voids": "FMV",
+    "startsTs": 1792935000000,
+    "fee": {
+     "coefficient": "0.06",
+     "makerCredit": "0.25",
+     "charged": "WHEN_LIVE"
+    },
+    "outcomes": [
+     {
+      "outcomeId": "01a136e2-e79d-7533-a2bd-8df8bdf42916",
+      "name": "NO +3.5",
+      "status": "TBD"
+     },
+     {
+      "outcomeId": "01a136e2-e79d-7533-a2bd-8e0baa598bb9",
+      "name": "PIT -3.5",
+      "status": "TBD"
+     }
+    ],
+    "volume": 37841002,
+    "openInterest": 31216033
+   },
+   {
+    "marketId": "01a136e2-e79c-70a2-8a3f-bdc341b76a71",
+    "description": "PIT @ NO t44.5",
+    "eventId": "01a136e2-e717-7c30-807e-7952b04dee72",
+    "marketType": "TOTAL",
+    "strike": "44.5",
+    "status": "OPEN",
+    "voids": "FMV",
+    "startsTs": 1792935000000,
+    "fee": {
+     "coefficient": "0.06",
+     "makerCredit": "0.25",
+     "charged": "WHEN_LIVE"
+    },
+    "outcomes": [
+     {
+      "outcomeId": "01a136e2-e79c-70a2-8a3f-bdde4478f26e",
+      "name": "Over 44.5",
+      "status": "TBD"
+     },
+     {
+      "outcomeId": "01a136e2-e79c-70a2-8a3f-bde4764b4db8",
+      "name": "Under 44.5",
+      "status": "TBD"
+     }
+    ],
+    "volume": 8786592,
+    "openInterest": 7869547
+   },
+   {
+    "marketId": "01a136e2-e79c-70a2-8a3f-bd6abd3a27ee",
+    "description": "NO",
+    "eventId": "01a136e2-e717-7c30-807e-7952b04dee72",
+    "marketType": "MONEY",
+    "strike": "0",
+    "status": "OPEN",
+    "voids": "FMV",
+    "startsTs": 1792935000000,
+    "fee": {
+     "coefficient": "0.06",
+     "makerCredit": "0.25",
+     "charged": "WHEN_LIVE"
+    },
+    "outcomes": [
+     {
+      "outcomeId": "01a136e2-e79c-70a2-8a3f-bd712d50f70e",
+      "name": "NO",
+      "status": "TBD"
+     },
+     {
+      "outcomeId": "01a136e2-e79c-70a2-8a3f-bd8c66bb58f4",
+      "name": "PIT",
+      "status": "TBD"
+     }
+    ],
+    "volume": 37444550,
+    "openInterest": 31893134
+   }
+  ]
+ }
+}
