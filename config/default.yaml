@@ -69,3 +69,14 @@ capture:
     trades_seconds: 60
     max_levels: 20              # The public book returns at most 20 levels
     market_types: [MONEY, SPREAD, TOTAL, TEAM_TOTAL, SPREAD_1H, TOTAL_1H]
+
+# Phase 1 copyability scoring (audit recommendation 2): re-price each source
+# wager at what a follower could have bought on an execution venue.
+copyability:
+  reaction_seconds: 5            # From our first sight of the wager to the follower's order
+  max_quote_age_seconds: 600     # Accept books polled at most this far apart at that time
+  wager_window_seconds: 60       # Fills of one wallet on one outcome this close form one wager
+  min_notional_usd: "100"
+  target_venues: [POLYMARKET_US, KALSHI, NOVIG]
+  accept_contingency_differences: true  # Contracts differing only in postponement/cancellation terms
+  require_complete_fill: true

@@ -1,14 +1,18 @@
 """Settlement-rule representation (spec 4.2, 7.1).
 
 Two contracts that agree on event, selection, line and period can still be
-different bets if they settle differently: overtime, retirement and inactive
-player rules all change the payout. ``SettlementRules`` captures those terms
-explicitly; :func:`rule_differences` lists every term on which two rule sets
-disagree or cannot be compared, which the contract matcher (SC-011) uses to
-decide between EXACT, EQUIVALENT_WITH_RULE_DIFFERENCE and AMBIGUOUS.
+different bets if they settle differently: overtime, ties, postponement,
+retirement and inactive-player rules all change the payout. ``SettlementRules``
+captures those terms explicitly; :func:`rule_differences` lists every term on
+which two rule sets disagree or cannot be compared, which the contract matcher
+(SC-011) uses to decide between EXACT, EQUIVALENT_WITH_RULE_DIFFERENCE and
+AMBIGUOUS.
 
 ``None`` always means *unknown*, never a default. Unknown terms are reported
 as differences because equivalence cannot be shown.
+
+Rules are attached to listings through hand-reviewed templates
+(:mod:`sharp_eyes.taxonomy.templates`), not parsed from each listing's text.
 """
 
 from __future__ import annotations
@@ -31,9 +35,10 @@ class TieRule(StrEnum):
     """What happens when the market lands exactly on the line, or a game ends tied."""
 
     PUSH_REFUND = "PUSH_REFUND"  # Stake returned
-    LOSES = "LOSES"  # Both sides of a binary contract cannot win, so the selected side loses
+    LOSES = "LOSES"  # A strict "more than" contract: YES loses, NO wins
     IMPOSSIBLE = "IMPOSSIBLE"  # Half-point line or format with no ties
-    SETTLES_AT_FIXED_PRICE = "SETTLES_AT_FIXED_PRICE"  # e.g. both outcomes settle at 0.50
+    SETTLES_AT_FIXED_PRICE = "SETTLES_AT_FIXED_PRICE"  # Both sides paid ``tie_price``
+    VENUE_FAIR_VALUE = "VENUE_FAIR_VALUE"  # Voided at a venue-determined fair price
 
 
 class RetirementRule(StrEnum):
@@ -56,8 +61,21 @@ class InactivePlayerRule(StrEnum):
 
 class PostponementRule(StrEnum):
     VOID = "VOID"
+    # The contract stands if the game is played within ``postponement_window_hours``;
+    # otherwise ``cancellation`` applies.
     STANDS_IF_PLAYED_WITHIN_WINDOW = "STANDS_IF_PLAYED_WITHIN_WINDOW"
+    # The market stays open however long the delay (Polymarket: "will remain open
+    # until the game has been completed").
+    STANDS_UNTIL_PLAYED = "STANDS_UNTIL_PLAYED"
     SETTLES_AT_FIXED_PRICE = "SETTLES_AT_FIXED_PRICE"
+
+
+class CancellationRule(StrEnum):
+    """Payout when the game is cancelled, abandoned early or not played in the window."""
+
+    FIXED_PRICE = "FIXED_PRICE"  # Both sides paid ``cancellation_price`` (e.g. 50-50)
+    VENUE_FAIR_VALUE = "VENUE_FAIR_VALUE"  # "Last fair price" / fair value settlement
+    REFUND = "REFUND"  # Stake returned
 
 
 class SettlementRules(BaseModel):
@@ -65,13 +83,15 @@ class SettlementRules(BaseModel):
 
     overtime: OvertimeRule | None = None
     tie: TieRule | None = None
+    tie_price: Decimal | None = None  # Paid per contract on a tie, for SETTLES_AT_FIXED_PRICE
     retirement: RetirementRule | None = None
     inactive_player: InactivePlayerRule | None = None
     postponement: PostponementRule | None = None
     postponement_window_hours: int | None = None
-    void_settlement_price: Decimal | None = None  # Price paid per contract on a void, if any
+    cancellation: CancellationRule | None = None
+    cancellation_price: Decimal | None = None  # For CancellationRule.FIXED_PRICE
     payout_per_contract_usd: Decimal | None = Decimal("1")
-    settlement_source: str | None = None  # e.g. "official league box score"
+    settlement_source: str | None = None  # e.g. "official league result"
 
     def canonical_json(self) -> str:
         return json.dumps(self.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
@@ -84,34 +104,36 @@ class SettlementRules(BaseModel):
 # two different but authoritative sources (for example, the league and a data
 # vendor relaying it) are usually equivalent, so a mismatch there is reported
 # under its own name and the matcher decides how strictly to treat it.
-_ECONOMIC_TERMS = (
+ECONOMIC_TERMS = (
     "overtime",
     "tie",
+    "tie_price",
     "retirement",
     "inactive_player",
     "postponement",
     "postponement_window_hours",
-    "void_settlement_price",
+    "cancellation",
+    "cancellation_price",
     "payout_per_contract_usd",
 )
+
+# Parameters of another term: they exist only for some of its values, so
+# ``None`` there means "not applicable" and is compared like any other value.
+_PARAMETERS = frozenset({"tie_price", "postponement_window_hours", "cancellation_price"})
 
 
 def rule_differences(a: SettlementRules, b: SettlementRules) -> list[str]:
     """Terms that differ, or that are unknown on either side."""
     diffs: list[str] = []
-    for term in (*_ECONOMIC_TERMS, "settlement_source"):
+    for term in (*ECONOMIC_TERMS, "settlement_source"):
         va, vb = getattr(a, term), getattr(b, term)
-        if va is None or vb is None:
-            # Unknown on either side means equivalence cannot be shown, except for
-            # optional parameters that both sides leave unset.
-            if not (va is None and vb is None and term in _OPTIONAL_WHEN_BOTH_UNSET):
+        if term in _PARAMETERS:
+            if va != vb:
+                diffs.append(term)
+        elif va is None or vb is None:
+            # An unset source on both sides is not by itself a mismatch.
+            if not (va is None and vb is None and term == "settlement_source"):
                 diffs.append(f"{term}:unknown")
         elif va != vb:
             diffs.append(term)
     return diffs
-
-
-# Terms whose absence on both sides is not by itself a mismatch.
-_OPTIONAL_WHEN_BOTH_UNSET = frozenset(
-    {"postponement_window_hours", "void_settlement_price", "settlement_source"}
-)
