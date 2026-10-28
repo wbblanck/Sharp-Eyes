@@ -33,8 +33,8 @@ The worker runs on the server around the clock.
 The server lets in only someone holding this key. Open Cloud Shell and run:
 
 ```bash
-ssh-keygen -t rsa -b 4096        # press Enter at every prompt
-cat ~/.ssh/id_rsa.pub            # copy the whole line it prints
+ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ""   # no questions asked
+cat ~/.ssh/id_rsa.pub                              # copy the whole line it prints
 ```
 
 The line starts with `ssh-rsa AAAA` and is safe to paste into Oracle. The key
