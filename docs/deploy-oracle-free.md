@@ -94,26 +94,10 @@ Log in again with `ssh ubuntu@<public-ip>` so the `docker` group applies,
 then check that `docker ps` prints an empty table rather than "permission
 denied".
 
-## 5. Make a read-only GitHub token [Browser]
-
-The repository is private, so the server needs a token to download it.
-
-1. GitHub > your picture > **Settings** > **Developer settings** >
-   **Personal access tokens** > **Fine-grained tokens** > **Generate new
-   token**.
-2. Name `oracle-sharp-eyes`, expiration up to a year.
-3. **Repository access**: **Only select repositories** > `wbblanck/Sharp-Eyes`.
-4. **Permissions** > **Repository permissions** > **Contents**: **Read-only**.
-5. **Generate token** and copy it (it starts with `github_pat_`). GitHub shows
-   it only once.
-
-## 6. Get the code and start it [Server]
+## 5. Get the code and start it [Server]
 
 ```bash
-git config --global credential.helper store   # so `git pull` doesn't ask again
 git clone https://github.com/wbblanck/Sharp-Eyes.git
-#   Username: wbblanck
-#   Password: paste the token (nothing shows as you paste; that's normal)
 cd Sharp-Eyes
 cp .env.example .env
 sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(openssl rand -hex 24)/" .env
@@ -125,7 +109,7 @@ applies database migrations, and starts the worker. The database and the
 worker restart on their own after a crash or a reboot, so this is already
 running as a service; you can close the SSH window.
 
-## 7. Check it [Server]
+## 6. Check it [Server]
 
 ```bash
 cd ~/Sharp-Eyes
@@ -143,7 +127,7 @@ runs once at start-up and stops.
 A good test that everything survives a restart: `sudo reboot`, wait a minute,
 log in again and run `docker compose ps`.
 
-## 8. Update [Server]
+## 7. Update [Server]
 
 When a pull request is merged on GitHub:
 
