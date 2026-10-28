@@ -4,27 +4,21 @@ The worker and its PostgreSQL run together under Docker Compose on one Oracle
 Cloud "Always Free" Ampere (ARM) server. Within the Always Free limits this
 costs nothing. The same steps work on any Linux box with Docker.
 
-Total time is about 45 minutes, most of it waiting. The steps run on three
-machines, marked at the start of each step:
+Total time is about 45 minutes, most of it waiting. Everything happens in
+your web browser; nothing is installed on your own computer. The steps run in
+three places, marked at the start of each step:
 
-* **[Browser]**: the Oracle Cloud console or GitHub.
-* **[Your computer]**: a terminal on your own computer (Terminal on a Mac,
-  PowerShell on Windows; both have `ssh` built in).
-* **[Server]**: the Oracle server, after you `ssh` into it.
+* **[Browser]**: the Oracle Cloud console.
+* **[Cloud Shell]**: a free terminal built into the Oracle console. Click the
+  **>_** icon at the top right (Developer tools > **Cloud Shell**) and it
+  opens at the bottom of the page.
+* **[Server]**: the Oracle server, after you `ssh` into it from Cloud Shell.
+  The prompt changes to `ubuntu@sharp-eyes`.
 
-## 1. Make an SSH key [Your computer]
+Your own computer only needs a browser, and it can be off once setup is done.
+The worker runs on the server around the clock.
 
-Skip this if you already have `~/.ssh/id_rsa.pub`.
-
-```bash
-ssh-keygen -t rsa -b 4096        # press Enter at every prompt
-cat ~/.ssh/id_rsa.pub            # copy this whole line; you paste it in step 3
-```
-
-On Windows PowerShell the second command is `type $HOME\.ssh\id_rsa.pub`.
-The `.pub` file is safe to share. Never share `id_rsa` (no extension).
-
-## 2. Create the Oracle account [Browser]
+## 1. Create the Oracle account [Browser]
 
 1. Go to <https://www.oracle.com/cloud/free/> and click **Start for free**.
 2. A credit card is required to prove identity. Always Free resources are not
@@ -33,6 +27,19 @@ The `.pub` file is safe to share. Never share `id_rsa` (no extension).
    served from the US East coast. It cannot be changed later.
 4. Wait for the "your account is ready" email (minutes, sometimes an hour or
    two), then sign in at <https://cloud.oracle.com>.
+
+## 2. Make an SSH key [Cloud Shell]
+
+The server lets in only someone holding this key. Open Cloud Shell and run:
+
+```bash
+ssh-keygen -t rsa -b 4096        # press Enter at every prompt
+cat ~/.ssh/id_rsa.pub            # copy the whole line it prints
+```
+
+The line starts with `ssh-rsa AAAA` and is safe to paste into Oracle. The key
+stays in Cloud Shell's home folder, so later logins from Cloud Shell just
+work. Never share `~/.ssh/id_rsa` (the file without `.pub`).
 
 ## 3. Create the server [Browser]
 
@@ -51,7 +58,7 @@ Menu (top left) > **Compute** > **Instances** > **Create instance**.
    public subnet** selected, and make sure **Assign a public IPv4 address** is
    on.
 5. **Add SSH keys**: choose **Paste public keys** and paste the line from
-   step 1.
+   step 2.
 6. **Boot volume**: tick **Specify a custom boot volume size** and enter
    **200** GB (the whole Always Free storage allowance). Leave the
    performance setting at its default.
@@ -75,10 +82,10 @@ shape VM.Standard.A1.Flex". In order of preference:
    anything outside the free limits would be billed, so only do this with a
    $1 budget alert set (Billing > Budgets > Create budget).
 
-## 4. Log in and install Docker [Your computer, then Server]
+## 4. Log in and install Docker [Cloud Shell, then Server]
 
 ```bash
-ssh ubuntu@<public-ip>           # type "yes" the first time
+ssh ubuntu@<public-ip>           # in Cloud Shell; type "yes" the first time
 ```
 
 You are now on the server. Install Docker, Compose and git:
@@ -107,7 +114,11 @@ docker compose up -d --build
 The first build takes 5 to 10 minutes. Compose then starts PostgreSQL,
 applies database migrations, and starts the worker. The database and the
 worker restart on their own after a crash or a reboot, so this is already
-running as a service; you can close the SSH window.
+running as a service; you can close Cloud Shell and the browser.
+
+Cloud Shell disconnects after about 20 minutes of no typing. If that happens
+during the build, open it again, `ssh ubuntu@<public-ip>`, `cd Sharp-Eyes` and
+run `docker compose up -d --build` once more; it picks up where it stopped.
 
 ## 6. Check it [Server]
 
