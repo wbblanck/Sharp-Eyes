@@ -1,6 +1,6 @@
 # Sharp tennis traders on Polymarket: what we found (2026-10-29)
 
-**Short answer: tennis has more genuinely skilled bettors than NFL, and their skill holds up over time, but none of it survives copying once Polymarket's taker fee (about 2c per dollar) is paid. Tennis looks worse for copying than NFL did.**
+**Short answer: tennis has genuinely skilled bettors whose skill holds up over time, but none of it survives copying once the taker fee is paid. On international Polymarket that fee averaged 2.1% of each copied dollar in this data. Polymarket US fees for tennis were not checked.**
 
 What was checked: every trade in the 10,662 ATP and WTA matches with at least $50k traded, from October 2025 to 28 October 2026 (32.5 million trades, 146,000 wallets). Bets placed before the match and bets placed during play were scored separately. To test whether a wallet's record is skill or luck, wallets were picked on matches up to 3 July 2026 and then checked on the 5,390 matches after that date, which they could not have known about.
 
@@ -17,7 +17,7 @@ What was checked: every trade in the 10,662 ATP and WTA matches with at least $5
 | 2 minutes | +0.4% | **-2.1%** |
 
   Measured on the final result rather than the closing price, copying them after 2 minutes made **0.0%** after fees in the second half of the year.
-* Many of the top names are bots: thousands of matches, small stakes, or mostly resting orders.
+* Many of the top names bet on thousands of matches with small stakes, or fill mostly with resting orders. Whether they are bots was not checked.
 
 ## 2. Your "winning record" list (profitable, won more than 60%, 20+ matches, $5k+ before the match)
 
@@ -27,11 +27,11 @@ What was checked: every trade in the 10,662 ATP and WTA matches with at least $5
 ## 3. During play
 
 * In-play is where most of the money is ($1.2 billion staked in the second half alone). **112 wallets pass an in-play skill test**: the price moves their way within five minutes of their bets. This is the strongest and most persistent signal in the data, and several of them made over $150k, up to $570k.
-* It is speed, not judgment: people with a faster score feed or someone at the court. **It is gone within seconds.** Copying the flagged in-play wallets in the second half lost **1.2% after fees with a 10-second delay** and **2.1% with a 2-minute delay**.
+* Why they win was not checked. What the data shows is that **the edge is gone within 10 seconds**. Copying the flagged in-play wallets in the second half lost **1.2% after fees with a 10-second delay** and **2.1% with a 2-minute delay**.
 
 ## What this means
 
-Copying tennis traders on Polymarket does not look profitable from history: the fee is bigger than the edge left over. The only thin possibility is your winning-record list before the match, placed as limit orders so you pay no taker fee, but the expected gain is around 1% and not proven.
+Copying tennis traders on Polymarket does not look profitable from history: the fee is bigger than the edge left over. Your winning-record list before the match came out around +1% for a copier after taker fees, which is not distinguishable from zero. Limit orders pay no fee on these markets (the fee schedule is taker-only), but whether limit orders would get filled was not tested.
 
 Caveats: prices come from the trade record (Polymarket keeps no order-book history), and match start times are Polymarket's listed times, with a guard for matches that start early. ITF and doubles matches were left out (tiny markets).
 
