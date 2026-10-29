@@ -85,7 +85,13 @@ def cmd_history_fetch(args: argparse.Namespace) -> int:
 
 
 def cmd_sharp_report(args: argparse.Namespace) -> int:
-    from sharp_eyes.history.analyze import load_history, persistence, rank, wallet_stats
+    from sharp_eyes.history.analyze import (
+        load_history,
+        persistence,
+        rank,
+        wallet_stats,
+        winning_records,
+    )
     from sharp_eyes.history.fetch import HistoryCache
     from sharp_eyes.history.report import SharpReport, default_split
 
@@ -93,10 +99,10 @@ def cmd_sharp_report(args: argparse.Namespace) -> int:
     if not history.rows:
         print(f"no cached games in {args.data_dir}; run history-fetch first")
         return 1
-    ranked = rank(
-        wallet_stats(history.rows, history.by_type),
-        min_games=args.min_games,
-        min_stake=args.min_stake,
+    stats = wallet_stats(history.rows, history.by_type)
+    ranked = rank(stats, min_games=args.min_games, min_stake=args.min_stake)
+    records = winning_records(
+        stats, min_games=args.min_games, min_stake=args.min_stake, min_win_rate=args.min_win_rate
     )
     split = (
         datetime.fromisoformat(args.split).replace(tzinfo=UTC).timestamp()
@@ -104,12 +110,26 @@ def cmd_sharp_report(args: argparse.Namespace) -> int:
         else default_split([r.kickoff for r in history.rows])
     )
     check = (
-        persistence(history.rows, split, min_games=args.min_games, min_stake=args.min_stake)
+        persistence(
+            history.rows,
+            split,
+            min_games=args.min_games,
+            min_stake=args.min_stake,
+            min_win_rate=args.min_win_rate,
+        )
         if split is not None
         else None
     )
     report = SharpReport(
-        history, ranked, check, args.min_games, args.min_stake, args.copy_delay, top=args.top
+        history,
+        ranked,
+        check,
+        args.min_games,
+        args.min_stake,
+        args.copy_delay,
+        top=args.top,
+        records=records,
+        min_win_rate=args.min_win_rate,
     )
     body = report.to_markdown()
     if args.out:
@@ -235,6 +255,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--data-dir", default="data/history")
     p.add_argument("--min-games", type=int, default=20, help="games bet before kickoff")
     p.add_argument("--min-stake", type=float, default=5000.0, help="USD staked before kickoff")
+    p.add_argument(
+        "--min-win-rate", type=float, default=0.60, help="winning-record list: share of bets won"
+    )
     p.add_argument("--copy-delay", type=float, default=120.0, help="follower delay, seconds")
     p.add_argument("--split", help="YYYY-MM-DD for the persistence check (default: midpoint)")
     p.add_argument("--top", type=int, default=30)

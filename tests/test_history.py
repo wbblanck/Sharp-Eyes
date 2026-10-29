@@ -17,6 +17,7 @@ from sharp_eyes.history.analyze import (
     ratio_t,
     score_event,
     wallet_stats,
+    winning_records,
 )
 from sharp_eyes.history.fetch import HistoryCache, is_game_event, merge_passes
 from sharp_eyes.history.report import SharpReport
@@ -175,3 +176,26 @@ def test_cache_round_trip_and_report(tmp_path: Path) -> None:
     report = SharpReport(history, ranked, None, 1, 1, 120)
     assert "Sharp NFL traders" in report.to_markdown()
     assert report.to_csv().count("\n") == len(ranked) + 1
+
+
+def test_win_rate_counts_net_positions_per_market() -> None:
+    # Two fills on the winning side of one market are one winning bet.
+    fills = [
+        *closing_tape(),
+        fill(KICK - 3600, "a", 0, "BUY", 0.50, 100),
+        fill(KICK - 3000, "a", 0, "BUY", 0.52, 100),
+        fill(KICK - 3600, "b", 1, "BUY", 0.50, 100),
+    ]
+    rows = {r.wallet: r.sums for r in score_event(event(), fills).rows if r.pregame}
+    assert rows["a"][F["bets"]] == 1 and rows["a"][F["wins"]] == 1
+    assert rows["b"][F["bets"]] == 1 and rows["b"][F["wins"]] == 0
+
+
+def test_winning_records_need_profit_and_win_rate() -> None:
+    rows = _rows("winner", 0.02, range(30)) + _rows("loser", -0.02, range(30))
+    for r in rows:
+        r.sums[F["bets"]] = 1
+        r.sums[F["wins"]] = 1 if r.wallet == "winner" and int(r.event_id) % 3 else 0
+    picked = winning_records(wallet_stats(rows), min_games=20, min_stake=100)
+    assert [s.wallet for s in picked] == ["winner"]
+    assert picked[0].win_rate == pytest.approx(20 / 30)

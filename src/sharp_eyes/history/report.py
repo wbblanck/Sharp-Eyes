@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 import io
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from sharp_eyes.history.analyze import History, Persistence, WalletStats
@@ -50,6 +50,8 @@ class SharpReport:
     min_stake: float
     copy_delay: float
     top: int = 30
+    records: list[WalletStats] = field(default_factory=list)
+    min_win_rate: float = 0.60
 
     def to_markdown(self) -> str:
         h, ranked = self.history, self.ranked
@@ -69,6 +71,9 @@ class SharpReport:
             f"{len(sharp)}",
             f"* **Still worth copying** after a {self.copy_delay:.0f} s delay (sharp, and "
             f"the delayed price still beats the close with t >= 2): {len(copyable)}",
+            f"* **Winning record** (profitable before kickoff and won more than "
+            f"{self.min_win_rate:.0%} of bets, same game and stake floors): "
+            f"{len(self.records)}",
             "",
             "Columns: **Taker CLV** is the average edge of the wallet's aggressive "
             "pre-game bets versus the closing price, per dollar staked (+2% means they "
@@ -93,14 +98,14 @@ class SharpReport:
                 f"**{'n/a' if p.rank_corr is None else f'{p.rank_corr:.2f}'}**.",
                 "",
                 "| Group | Wallets active after | Stake after | Taker CLV after "
-                "| All CLV after | ROI after | Copy CLV after |",
-                "|---|---:|---:|---:|---:|---:|---:|",
+                "| All CLV after | ROI after | Win rate after | Copy CLV after |",
+                "|---|---:|---:|---:|---:|---:|---:|---:|",
             ]
             for g in p.groups:
                 lines.append(
                     f"| {g.label} | {g.wallets} | {_usd(g.stake)} | {_pct(g.taker_clv)} | "
-                    f"{_pct(g.clv)} | "
-                    f"{_pct(g.roi)} | {_pct(g.copy_clv)} |"
+                    f"{_pct(g.clv)} | {_pct(g.roi)} | {_rate(g.win_rate)} | "
+                    f"{_pct(g.copy_clv)} |"
                 )
             lines.append("")
         lines += [
@@ -120,6 +125,7 @@ class SharpReport:
                 f"{s.maker_share:.0%} | {_signed_usd(s.live_pnl)} ({s.live_games}) | "
                 f"{main_bet_type(s)} | {_day(s.last)} | {flag} |"
             )
+        lines += self._records_markdown()
         lines += [
             "",
             "## Caveats",
@@ -138,6 +144,29 @@ class SharpReport:
         ]
         return "\n".join(lines)
 
+    def _records_markdown(self) -> list[str]:
+        out = [
+            "",
+            f"## Winning record: ROI above zero and over {self.min_win_rate:.0%} of bets won",
+            "",
+            "A bet is the wallet's net pre-game position in one market. Win rate ignores "
+            "the price paid (backing 80c favourites wins 80% and can still lose money), "
+            "so read it with ROI and CLV. Sorted by ROI t-statistic.",
+            "",
+            "| # | Wallet | Games | Bets | Win rate | Pre-game stake | ROI (t) "
+            "| Taker CLV (t) | Copy CLV (t) | Main bet type | Last game | Also CLV-sharp |",
+            "|---:|---|---:|---:|---:|---:|---:|---:|---:|---|---|---|",
+        ]
+        for i, s in enumerate(self.records[: self.top], 1):
+            out.append(
+                f"| {i} | [{s.wallet[:10]}]({PROFILE}{s.wallet}) | {s.games} | {s.bets} | "
+                f"{_rate(s.win_rate)} | {_usd(s.pre_stake)} | {_pct(s.roi)} ({_t(s.roi_t)}) | "
+                f"{_pct(s.taker_clv)} ({_t(s.taker_clv_t)}) | "
+                f"{_pct(s.copy_clv)} ({_t(s.copy_clv_t)}) | {main_bet_type(s)} | "
+                f"{_day(s.last)} | {'yes' if s.sharp else ''} |"
+            )
+        return out
+
     def to_csv(self) -> str:
         buf = io.StringIO()
         w = csv.writer(buf)
@@ -145,20 +174,29 @@ class SharpReport:
             "rank", "wallet", "profile", "games", "taker_games", "pre_stake", "pre_pnl",
             "taker_clv", "taker_clv_t", "q_value", "clv", "clv_t", "roi", "roi_t", "copy_clv",
             "copy_clv_t", "copy_roi", "maker_share", "live_games", "live_stake", "live_pnl",
-            "main_bet_type",
+            "bets", "wins", "win_rate", "winning_record", "main_bet_type",
             "first_game", "last_game", "sharp", "copyable",
         ])  # fmt: skip
-        for i, s in enumerate(self.ranked, 1):
+        record = {s.wallet for s in self.records}
+        # Ranked wallets first, then winning-record wallets the CLV rank left out.
+        ranked = {s.wallet for s in self.ranked}
+        rows = self.ranked + [s for s in self.records if s.wallet not in ranked]
+        for i, s in enumerate(rows, 1):
             w.writerow([
                 i, s.wallet, PROFILE + s.wallet, s.games, s.taker_games, round(s.pre_stake, 2),
                 round(s.pre_pnl, 2), _r(s.taker_clv), _r(s.taker_clv_t), f"{s.q_value:.4g}",
                 _r(s.clv), _r(s.clv_t), _r(s.roi), _r(s.roi_t), _r(s.copy_clv),
                 _r(s.copy_clv_t), _r(s.copy_roi), round(s.maker_share, 3), s.live_games,
-                round(s.live_stake, 2), round(s.live_pnl, 2), main_bet_type(s),
+                round(s.live_stake, 2), round(s.live_pnl, 2), s.bets, s.wins,
+                _r(s.win_rate), int(s.wallet in record), main_bet_type(s),
                 _day(s.first), _day(s.last),
                 int(s.sharp), int(s.copyable),
             ])  # fmt: skip
         return buf.getvalue()
+
+
+def _rate(x: float | None) -> str:
+    return "n/a" if x is None else f"{x:.0%}"
 
 
 def _r(x: float | None) -> str:

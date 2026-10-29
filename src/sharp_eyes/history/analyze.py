@@ -167,6 +167,8 @@ FIELDS = (
     "copy_pnl",
     "tclv_profit",
     "tclv_stake",
+    "bets",  # pre-game markets bet (net position per market = one bet)
+    "wins",  # of those, markets where the position made money
 )
 F = {name: i for i, name in enumerate(FIELDS)}
 
@@ -197,6 +199,7 @@ def score_event(
     acc: dict[tuple[str, bool], list[float]] = defaultdict(lambda: [0.0] * len(FIELDS))
     by_type: dict[tuple[str, str], list[float]] = defaultdict(lambda: [0.0, 0.0, 0.0])
     kickoff = min((m.kickoff for m in markets.values()), default=0.0)
+    market_pnl: dict[tuple[str, str], float] = defaultdict(float)
     for ts, wallet, cid, oi, side, price, size, taker in fills:
         m = markets.get(cid)
         if m is None or not wallet or not PRICE_FLOOR <= price <= PRICE_CAP:
@@ -218,6 +221,7 @@ def score_event(
             a[F["taker_stake"]] += stake
         if not pregame:
             continue
+        market_pnl[(wallet, cid)] += pnl
         close0 = closes.get(cid)
         bt = by_type[(wallet, m.bet_type.value)]
         bt[0] += stake
@@ -238,6 +242,10 @@ def score_event(
                 a[F["copy_profit"]] += size * (close_k - copy_q)
                 a[F["copy_stake"]] += size * copy_q
                 a[F["copy_pnl"]] += size * (m.payout[k] - copy_q)
+    for (wallet, _cid), pnl in market_pnl.items():
+        a = acc[(wallet, True)]
+        a[F["bets"]] += 1
+        a[F["wins"]] += pnl > 0
     rows = [
         GameRow(wallet, str(event["id"]), kickoff, pregame, sums)
         for (wallet, pregame), sums in acc.items()
@@ -296,6 +304,8 @@ class WalletStats:
     copy_clv: float | None
     copy_clv_t: float | None
     copy_roi: float | None
+    bets: int
+    wins: int
     live_games: int
     live_stake: float
     live_pnl: float
@@ -312,6 +322,19 @@ class WalletStats:
     @property
     def copyable(self) -> bool:
         return self.sharp and (self.copy_clv_t or 0) >= 2
+
+    @property
+    def win_rate(self) -> float | None:
+        return self.wins / self.bets if self.bets else None
+
+    def winning_record(self, min_games: int, min_stake: float, min_win_rate: float) -> bool:
+        """Will's rule: profitable before kickoff and winning most bets."""
+        return (
+            self.games >= min_games
+            and self.pre_stake >= min_stake
+            and self.pre_pnl > 0
+            and (self.win_rate or 0) > min_win_rate
+        )
 
 
 def wallet_stats(
@@ -356,6 +379,8 @@ def wallet_stats(
                 copy_clv=copy_clv,
                 copy_clv_t=copy_t,
                 copy_roi=copy_roi,
+                bets=int(sum(col(pre, "bets"))),
+                wins=int(sum(col(pre, "wins"))),
                 live_games=len(live),
                 live_stake=sum(col(live, "stake")),
                 live_pnl=sum(col(live, "pnl")),
@@ -386,6 +411,23 @@ def rank(
         key=lambda s: s.taker_clv_t if s.taker_clv_t is not None else -1e9,
         reverse=True,
     )
+
+
+def winning_records(
+    stats: Sequence[WalletStats],
+    *,
+    min_games: int = 20,
+    min_stake: float = 2000.0,
+    min_win_rate: float = 0.60,
+) -> list[WalletStats]:
+    """Wallets with a winning record, best ROI t-statistic first.
+
+    The alternative to the CLV rank: positive pre-game ROI and more than
+    ``min_win_rate`` of bets won. Win rate ignores the price paid, so it
+    favours favourite backers; the persistence check shows how it holds up.
+    """
+    picked = [s for s in stats if s.winning_record(min_games, min_stake, min_win_rate)]
+    return sorted(picked, key=lambda s: s.roi_t if s.roi_t is not None else -1e9, reverse=True)
 
 
 @dataclass
@@ -431,6 +473,7 @@ class GroupResult:
     clv: float | None
     roi: float | None
     copy_clv: float | None
+    win_rate: float | None
 
 
 @dataclass
@@ -460,6 +503,7 @@ def _pooled(label: str, rows: Sequence[GameRow], wallets: set[str]) -> GroupResu
         clv=ratio("clv_profit", "clv_stake"),
         roi=ratio("pnl", "stake"),
         copy_clv=ratio("copy_profit", "copy_stake"),
+        win_rate=ratio("wins", "bets"),
     )
 
 
@@ -491,11 +535,19 @@ def persistence(
     min_stake: float = 2000.0,
     min_test_games: int = 5,
     top_n: int = 25,
+    min_win_rate: float = 0.60,
 ) -> Persistence:
     """Rank on games before ``split``, then measure the same wallets after it."""
     train = [r for r in rows if r.kickoff < split]
     test = [r for r in rows if r.kickoff >= split]
-    ranked = rank(wallet_stats(train), min_games=min_games, min_stake=min_stake)
+    train_stats = wallet_stats(train)
+    record = {
+        s.wallet
+        for s in winning_records(
+            train_stats, min_games=min_games, min_stake=min_stake, min_win_rate=min_win_rate
+        )
+    }
+    ranked = rank(train_stats, min_games=min_games, min_stake=min_stake)
     sharp = {s.wallet for s in ranked if s.sharp}
     top = {s.wallet for s in ranked[:top_n]}
     bottom = {s.wallet for s in ranked[-top_n:]}
@@ -504,6 +556,12 @@ def persistence(
         _pooled(f"Flagged sharp before split (q < 0.05, {len(sharp)} wallets)", test, sharp),
         _pooled(f"Top {top_n} before split", test, top),
         _pooled(f"Bottom {top_n} before split", test, bottom),
+        _pooled(
+            f"Winning record before split (ROI > 0, wins > {min_win_rate:.0%}, "
+            f"{len(record)} wallets)",
+            test,
+            record,
+        ),
         _pooled("Every wallet", test, everyone),
     ]
     test_stats = {s.wallet: s for s in wallet_stats(test)}
