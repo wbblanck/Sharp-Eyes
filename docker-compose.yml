@@ -4,8 +4,9 @@ services:
   db:
     image: postgres:16.6
     restart: unless-stopped
-    # Sized for the 24 GB Oracle Always Free server (see docs/deploy-oracle-free.md).
-    command: ["postgres", "-c", "shared_buffers=4GB", "-c", "effective_cache_size=12GB"]
+    # Memory settings come from .env; scripts/server-setup.sh sizes them to the
+    # server (see docs/deploy-oracle-free.md).
+    command: ["postgres", "-c", "shared_buffers=${PG_SHARED_BUFFERS:-3GB}", "-c", "effective_cache_size=${PG_EFFECTIVE_CACHE_SIZE:-8GB}"]
     shm_size: 1g
     environment:
       POSTGRES_USER: sharp_eyes
