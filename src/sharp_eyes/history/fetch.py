@@ -213,6 +213,7 @@ async def sync(
     *,
     sport: str = "nfl",
     min_volume: float = 0.0,
+    since: str | None = None,
     concurrency: int = 4,
     data_rate: float = 10.0,
     limit: int | None = None,
@@ -226,6 +227,9 @@ async def sync(
             found = await list_settled_games(gamma, season, sport, min_volume)
             log.info("season %s: %d settled games", season, len(found))
             games.extend(found)
+        if since:
+            # ISO strings in UTC compare in time order.
+            games = [g for g in games if (g.get("startTime") or "") >= since]
         todo = [g for g in games if not cache.has(g["id"])]
         cached = len(games) - len(todo)
         if limit is not None:

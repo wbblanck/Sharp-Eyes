@@ -84,6 +84,7 @@ def cmd_history_fetch(args: argparse.Namespace) -> int:
         args.season or list(DEFAULT_SERIES[args.sport]),
         sport=args.sport,
         min_volume=args.min_volume,
+        since=args.since,
         concurrency=args.concurrency,
         data_rate=args.rate,
         limit=args.limit,
@@ -264,6 +265,7 @@ def main(argv: list[str] | None = None) -> int:
         help="NFL season year or tennis tour (atp, wta, itf, ...), repeatable",
     )
     p.add_argument("--min-volume", type=float, default=0.0, help="skip smaller games (USD)")
+    p.add_argument("--since", help="only games starting at or after this UTC date (YYYY-MM-DD)")
     p.add_argument("--rate", type=float, default=10.0, help="Data API requests per second")
     p.add_argument("--concurrency", type=int, default=4, help="games downloaded in parallel")
     p.add_argument("--limit", type=int, help="fetch at most this many new games")
