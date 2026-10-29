@@ -1,4 +1,4 @@
-"""Download settled Polymarket NFL games and all their fills to a local cache.
+"""Download settled Polymarket games (NFL, tennis) and all their fills to a local cache.
 
 Layout under ``data_dir`` (one pair of files per game, written atomically):
 
@@ -7,7 +7,7 @@ Layout under ``data_dir`` (one pair of files per game, written atomically):
   ``[ts, wallet, condition_id, outcome_index, side, price, size, taker]``.
 
 A game is downloaded once; re-running only fetches games not cached yet, so
-the cache can be topped up weekly from any laptop.
+the cache can be topped up weekly from any laptop. Tennis "games" are matches.
 """
 
 from __future__ import annotations
@@ -28,8 +28,21 @@ from sharp_eyes.capture.venues.polymarket import DATA, GAMMA, TRADE_PAGE, keyed_
 
 log = logging.getLogger(__name__)
 
-# Gamma series per NFL season (gamma /sports lists only the current one).
-SEASON_SERIES: dict[str, str] = {"2025": "10187", "2026": "12185"}
+# Gamma series per sport, keyed by season (NFL) or tour (tennis). gamma
+# /sports lists only each sport's current series.
+SPORT_SERIES: dict[str, dict[str, str]] = {
+    "nfl": {"2025": "10187", "2026": "12185"},
+    "tennis": {
+        "atp": "10365",
+        "wta": "10366",
+        "itf": "11634",
+        "atp-doubles": "11632",
+        "wta-doubles": "11633",
+    },  # fmt: skip
+}
+# Series fetched when none are named: tennis ITF and doubles markets are tiny.
+DEFAULT_SERIES: dict[str, tuple[str, ...]] = {"nfl": ("2025", "2026"), "tennis": ("atp", "wta")}
+SEASON_SERIES = SPORT_SERIES["nfl"]
 
 MARKET_KEYS = (
     "conditionId",
@@ -47,15 +60,22 @@ MARKET_KEYS = (
 )
 
 
-def is_game_event(raw: dict[str, Any]) -> bool:
-    """Game events are "Away vs. Home"; props and scorer events add " - ..."."""
+def is_game_event(raw: dict[str, Any], sport: str = "nfl") -> bool:
+    """NFL games are "Away vs. Home"; props and scorer events add " - ...".
+
+    Tennis matches are "Tournament: Player vs Player" with a moneyline market.
+    """
     title = raw.get("title") or ""
+    if sport == "tennis":
+        markets = raw.get("markets") or []
+        return " vs " in title and any(m.get("sportsMarketType") == "moneyline" for m in markets)
     return " vs. " in title and " - " not in title
 
 
-def trim_event(raw: dict[str, Any], season: str) -> dict[str, Any]:
+def trim_event(raw: dict[str, Any], season: str, sport: str = "nfl") -> dict[str, Any]:
     return {
         "id": str(raw["id"]),
+        "sport": sport,
         "season": season,
         "title": raw.get("title") or "",
         "slug": raw.get("slug") or "",
@@ -137,21 +157,30 @@ class HistoryCache:
         os.replace(ev_tmp, ev_path)
 
 
-async def list_settled_games(gamma: VenueHttp, season: str) -> list[dict[str, Any]]:
-    series = SEASON_SERIES[season]
+async def list_settled_games(
+    gamma: VenueHttp, season: str, sport: str = "nfl", min_volume: float = 0.0
+) -> list[dict[str, Any]]:
+    """Settled games of one series, via keyset paging (/events refuses offsets
+    past a few thousand, and a tennis tour has over ten thousand matches)."""
+    series = SPORT_SERIES[sport][season]
     out: list[dict[str, Any]] = []
-    offset = 0
+    params: dict[str, Any] = {"series_id": series, "closed": "true", "limit": 500}
+    seen: set[str] = set()
     while True:
-        resp = await gamma.get(
-            "/events",
-            params={"series_id": series, "closed": "true", "limit": 100, "offset": offset},
+        resp = await gamma.get("/events/keyset", params=params)
+        body = resp.data or {}
+        page: list[dict[str, Any]] = body.get("events") or []
+        new = [raw for raw in page if str(raw["id"]) not in seen]
+        seen.update(str(raw["id"]) for raw in page)
+        out.extend(
+            trim_event(raw, season, sport)
+            for raw in new
+            if is_game_event(raw, sport) and float(raw.get("volume") or 0) >= min_volume
         )
-        page: list[dict[str, Any]] = resp.data or []
-        out.extend(trim_event(raw, season) for raw in page if is_game_event(raw))
-        if len(page) < 100:
-            break
-        offset += 100
-    return out
+        cursor = body.get("next_cursor")
+        if not cursor or not new:
+            return out
+        params["after_cursor"] = cursor
 
 
 async def _walk_all(data: VenueHttp, event_id: str, taker_only: bool) -> list[dict[str, Any]]:
@@ -182,6 +211,9 @@ async def sync(
     cache: HistoryCache,
     seasons: Sequence[str],
     *,
+    sport: str = "nfl",
+    min_volume: float = 0.0,
+    since: str | None = None,
     concurrency: int = 4,
     data_rate: float = 10.0,
     limit: int | None = None,
@@ -192,10 +224,14 @@ async def sync(
     try:
         games: list[dict[str, Any]] = []
         for season in seasons:
-            found = await list_settled_games(gamma, season)
+            found = await list_settled_games(gamma, season, sport, min_volume)
             log.info("season %s: %d settled games", season, len(found))
             games.extend(found)
+        if since:
+            # ISO strings in UTC compare in time order.
+            games = [g for g in games if (g.get("startTime") or "") >= since]
         todo = [g for g in games if not cache.has(g["id"])]
+        cached = len(games) - len(todo)
         if limit is not None:
             todo = todo[:limit]
         done = 0
@@ -212,7 +248,7 @@ async def sync(
         failed = [g["id"] for g, r in zip(todo, results, strict=True) if isinstance(r, Exception)]
         if failed:
             log.warning("%d games failed, re-run to retry: %s", len(failed), ", ".join(failed))
-        return done, len(games) - len(todo)
+        return done, cached
     finally:
         await gamma.aclose()
         await data.aclose()
@@ -222,4 +258,4 @@ def run_sync(cache_dir: Path, seasons: Sequence[str], **kwargs: Any) -> tuple[in
     return asyncio.run(sync(HistoryCache(cache_dir), seasons, **kwargs))
 
 
-__all__ = ["SEASON_SERIES", "HistoryCache", "run_sync", "sync"]
+__all__ = ["DEFAULT_SERIES", "SEASON_SERIES", "SPORT_SERIES", "HistoryCache", "run_sync", "sync"]
