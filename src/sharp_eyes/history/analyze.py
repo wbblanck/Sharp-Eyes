@@ -1,4 +1,4 @@
-"""Score every wallet's NFL wagers on skill versus luck, from cached history.
+"""Score every wallet's wagers (NFL games, tennis matches) on skill versus luck.
 
 Each fill is normalised to "bought outcome k at price q for s shares": a BUY
 of outcome i is (i, p); a SELL of outcome i at p is economically a buy of the
@@ -16,6 +16,19 @@ staked so they share units:
 
 Wallets are ranked on CLV of their taker fills alone (see :func:`rank`).
 
+In-game (live) bets have no closing line, so they get their own yardstick:
+
+* **Live markout**: ``s * (p_later - q)``, the move of the price in the five
+  minutes after the bet. Someone with faster news (a courtside scout, a
+  quicker data feed) buys before the price moves; everyone else is noise.
+* **Copy markout**: the same for a follower who buys ``copy_delay`` seconds
+  late and is marked five minutes after that. Ranked by :func:`rank_live`.
+
+Tennis start times are scheduled times. A match that starts early would put
+in-play bets and prices into the "pre-match" close, so for tennis the pre-match
+cutoff moves back to the first in-play-sized price swing in the hour before
+the listed start (:func:`detect_inplay`).
+
 Significance is a t-statistic of the stake-weighted ratio, clustered by game
 (a wallet's fills on one game are not independent). With thousands of
 wallets some clear t = 3 by luck, so p-values get a Benjamini-Hochberg
@@ -30,7 +43,7 @@ import json
 import math
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -45,6 +58,10 @@ CLOSE_FALLBACK_TRADES = 5
 CLOSE_FALLBACK_AGE = 6 * 3600
 COPY_MAX_WAIT = 30 * 60  # no print within this long after the delay: no copy price
 PRICE_FLOOR, PRICE_CAP = 0.03, 0.97  # outside: near-certain outcomes, no information
+MARK_HORIZON = 5 * 60  # live markout: price this long after the bet
+INPLAY_SWING = 0.08  # a moneyline move this big within INPLAY_WINDOW looks in-play
+INPLAY_WINDOW = 5 * 60
+INPLAY_LOOKBACK = 60 * 60  # how far before the listed start an early start is looked for
 
 
 def parse_ts(value: str | None) -> float | None:
@@ -67,6 +84,7 @@ class MarketInfo:
     condition_id: str
     bet_type: BetType
     period: Period
+    kind: str  # bet type for display; the venue's own market type when unmapped
     kickoff: float
     closed_at: float | None
     payout: tuple[float, float]
@@ -89,18 +107,21 @@ def parse_payout(raw: Any) -> tuple[float, float] | None:
 def parse_markets(event: dict[str, Any]) -> dict[str, MarketInfo]:
     event_start = parse_ts(event.get("startTime"))
     out = {}
+    smt: str
     for m in event.get("markets") or []:
         payout = parse_payout(m.get("outcomePrices"))
         kickoff = parse_ts(m.get("gameStartTime")) or event_start
         if payout is None or kickoff is None or not m.get("conditionId"):
             continue
-        bet_type, period = classify(MARKET_TYPES, m.get("sportsMarketType") or "")
+        smt = m.get("sportsMarketType") or ""
+        bet_type, period = classify(MARKET_TYPES, smt)
         fees = m.get("feeSchedule") or {}
         rate = float(fees.get("rate") or 0) if m.get("feesEnabled") else 0.0
         out[m["conditionId"]] = MarketInfo(
             condition_id=m["conditionId"],
             bet_type=bet_type,
             period=period,
+            kind=bet_type.value if bet_type is not BetType.OTHER else smt.upper(),
             kickoff=kickoff,
             closed_at=parse_ts(m.get("closedTime")),
             payout=payout,
@@ -141,16 +162,48 @@ class PricePath:
         return None
 
 
-def price_paths(fills: Iterable[Sequence[Any]]) -> dict[str, PricePath]:
+def price_paths(
+    fills: Iterable[Sequence[Any]], floor: float = PRICE_FLOOR, cap: float = PRICE_CAP
+) -> dict[str, PricePath]:
     paths: dict[str, PricePath] = defaultdict(PricePath)
     for ts, _w, cid, oi, _side, price, size, taker in sorted(fills, key=lambda f: f[0]):
-        if not taker or not PRICE_FLOOR <= price <= PRICE_CAP:
+        if not taker or not floor <= price <= cap:
             continue
         path = paths[cid]
         path.ts.append(ts)
         path.p0.append(price if oi == 0 else 1 - price)
         path.notional.append(size * price)
     return paths
+
+
+def detect_inplay(path: PricePath, listed_start: float) -> float | None:
+    """First moneyline swing of INPLAY_SWING within INPLAY_WINDOW in the hour
+    before ``listed_start``: the match (or news that moves it like play does)
+    began early. None when the price stayed calm."""
+    lo = bisect.bisect_left(path.ts, listed_start - INPLAY_LOOKBACK)
+    hi = bisect.bisect_left(path.ts, listed_start)
+    j = bisect.bisect_left(path.ts, listed_start - INPLAY_LOOKBACK - INPLAY_WINDOW)
+    for i in range(lo, hi):
+        while path.ts[j] < path.ts[i] - INPLAY_WINDOW:
+            j += 1
+        window = path.p0[j : i + 1]
+        if max(window) - min(window) > INPLAY_SWING:
+            return path.ts[j]
+    return None
+
+
+def tennis_cutoffs(
+    markets: dict[str, MarketInfo], paths: dict[str, PricePath]
+) -> dict[str, MarketInfo]:
+    """Pull every market's start back to an early in-play swing, if any."""
+    money = [m for m in markets.values() if m.bet_type is BetType.MONEYLINE and m.condition_id
+             in paths]  # fmt: skip
+    if not money:
+        return markets
+    early = detect_inplay(paths[money[0].condition_id], money[0].kickoff)
+    if early is None:
+        return markets
+    return {cid: replace(m, kickoff=min(m.kickoff, early)) for cid, m in markets.items()}
 
 
 # Per (wallet, game, phase) sums. Index names for the row list below.
@@ -169,6 +222,12 @@ FIELDS = (
     "tclv_stake",
     "bets",  # pre-game markets bet (net position per market = one bet)
     "wins",  # of those, markets where the position made money
+    "copy_fee",  # taker fee a follower pays on the copy stake
+    "mark_profit",  # live taker fills: price MARK_HORIZON later minus price paid
+    "mark_stake",
+    "lcopy_profit",  # live, follower buying copy_delay late, marked MARK_HORIZON after
+    "lcopy_stake",
+    "lcopy_fee",
 )
 F = {name: i for i, name in enumerate(FIELDS)}
 
@@ -194,6 +253,10 @@ def score_event(
 ) -> EventScore:
     markets = parse_markets(event)
     paths = price_paths(fills)
+    if event.get("sport") == "tennis":
+        markets = tennis_cutoffs(markets, paths)
+    # Marks use every taker print: a live price heading to 0 or 1 is information.
+    marks = price_paths(fills, 0.0, 1.0)
     closes = {cid: paths[cid].close(m.kickoff) if cid in paths else None
               for cid, m in markets.items()}  # fmt: skip
     acc: dict[tuple[str, bool], list[float]] = defaultdict(lambda: [0.0] * len(FIELDS))
@@ -220,10 +283,12 @@ def score_event(
         if taker:
             a[F["taker_stake"]] += stake
         if not pregame:
+            if taker and cid in marks:
+                live_marks(a, marks[cid], m, ts, k, q, size, copy_delay)
             continue
         market_pnl[(wallet, cid)] += pnl
         close0 = closes.get(cid)
-        bt = by_type[(wallet, m.bet_type.value)]
+        bt = by_type[(wallet, m.kind)]
         bt[0] += stake
         if close0 is None:
             continue
@@ -241,6 +306,7 @@ def score_event(
             if PRICE_FLOOR <= copy_q <= PRICE_CAP:
                 a[F["copy_profit"]] += size * (close_k - copy_q)
                 a[F["copy_stake"]] += size * copy_q
+                a[F["copy_fee"]] += follower_fee(m, size, copy_q)
                 a[F["copy_pnl"]] += size * (m.payout[k] - copy_q)
     for (wallet, _cid), pnl in market_pnl.items():
         a = acc[(wallet, True)]
@@ -251,6 +317,33 @@ def score_event(
         for (wallet, pregame), sums in acc.items()
     ]
     return EventScore(rows, dict(by_type))
+
+
+def follower_fee(m: MarketInfo, size: float, q: float) -> float:
+    """Taker fee on a copy; symmetric in p(1 - p), so the side does not matter."""
+    return float(m.fee_rate * size * (q * (1 - q)) ** m.fee_exponent)
+
+
+def live_marks(
+    a: list[float], path: PricePath, m: MarketInfo, ts: float, k: int, q: float, size: float,
+    copy_delay: float,
+) -> None:  # fmt: skip
+    end = m.closed_at if m.closed_at is not None else math.inf
+    later = path.price_after(ts + MARK_HORIZON, end)
+    if later is None:
+        return
+    a[F["mark_profit"]] += size * ((later if k == 0 else 1 - later) - q)
+    a[F["mark_stake"]] += size * q
+    p_copy = path.price_after(ts + copy_delay, end)
+    if p_copy is None:
+        return
+    copy_q = p_copy if k == 0 else 1 - p_copy
+    copy_later = path.price_after(ts + copy_delay + MARK_HORIZON, end)
+    if copy_later is None or not PRICE_FLOOR <= copy_q <= PRICE_CAP:
+        return
+    a[F["lcopy_profit"]] += size * ((copy_later if k == 0 else 1 - copy_later) - copy_q)
+    a[F["lcopy_stake"]] += size * copy_q
+    a[F["lcopy_fee"]] += follower_fee(m, size, copy_q)
 
 
 def ratio_t(xs: Sequence[float], ys: Sequence[float]) -> tuple[float | None, float | None]:
@@ -304,15 +397,23 @@ class WalletStats:
     copy_clv: float | None
     copy_clv_t: float | None
     copy_roi: float | None
+    copy_net: float | None  # copy CLV after the follower's taker fee
     bets: int
     wins: int
     live_games: int
     live_stake: float
     live_pnl: float
+    live_taker_games: int  # live games with marked taker bets
+    live_mark: float | None
+    live_mark_t: float | None
+    live_copy: float | None
+    live_copy_t: float | None
+    live_copy_net: float | None
     maker_share: float
     first: float
     last: float
     q_value: float = 1.0
+    live_q_value: float = 1.0
     bet_types: dict[str, tuple[float, float | None]] = field(default_factory=dict)
 
     @property
@@ -322,6 +423,14 @@ class WalletStats:
     @property
     def copyable(self) -> bool:
         return self.sharp and (self.copy_clv_t or 0) >= 2
+
+    @property
+    def live_sharp(self) -> bool:
+        return self.live_q_value < 0.05 and (self.live_mark or 0) > 0
+
+    @property
+    def live_copyable(self) -> bool:
+        return self.live_sharp and (self.live_copy_t or 0) >= 2
 
     @property
     def win_rate(self) -> float | None:
@@ -335,6 +444,11 @@ class WalletStats:
             and self.pre_pnl > 0
             and (self.win_rate or 0) > min_win_rate
         )
+
+
+def net(group: Sequence[list[float]], profit: str, fee: str, stake: str) -> float | None:
+    den = sum(s[F[stake]] for s in group)
+    return sum(s[F[profit]] - s[F[fee]] for s in group) / den if den > 0 else None
 
 
 def wallet_stats(
@@ -361,6 +475,10 @@ def wallet_stats(
         tclv, tclv_t = ratio_t(col(tpre, "tclv_profit"), col(tpre, "tclv_stake"))
         copy_clv, copy_t = ratio_t(col(pre, "copy_profit"), col(pre, "copy_stake"))
         copy_roi, _ = ratio_t(col(pre, "copy_pnl"), col(pre, "copy_stake"))
+        copy_net = net(pre, "copy_profit", "copy_fee", "copy_stake")
+        lmark = [s for s in live if s[F["mark_stake"]] > 0]
+        live_mark, live_mark_t = ratio_t(col(lmark, "mark_profit"), col(lmark, "mark_stake"))
+        live_copy, live_copy_t = ratio_t(col(live, "lcopy_profit"), col(live, "lcopy_stake"))
         stake_all = sum(g.sums[F["stake"]] for g in grs)
         taker_all = sum(g.sums[F["taker_stake"]] for g in grs)
         out.append(
@@ -379,11 +497,18 @@ def wallet_stats(
                 copy_clv=copy_clv,
                 copy_clv_t=copy_t,
                 copy_roi=copy_roi,
+                copy_net=copy_net,
                 bets=int(sum(col(pre, "bets"))),
                 wins=int(sum(col(pre, "wins"))),
                 live_games=len(live),
                 live_stake=sum(col(live, "stake")),
                 live_pnl=sum(col(live, "pnl")),
+                live_taker_games=len(lmark),
+                live_mark=live_mark,
+                live_mark_t=live_mark_t,
+                live_copy=live_copy,
+                live_copy_t=live_copy_t,
+                live_copy_net=net(live, "lcopy_profit", "lcopy_fee", "lcopy_stake"),
                 maker_share=1 - taker_all / stake_all if stake_all > 0 else 0.0,
                 first=min(g.kickoff for g in grs),
                 last=max(g.kickoff for g in grs),
@@ -409,6 +534,21 @@ def rank(
     return sorted(
         eligible,
         key=lambda s: s.taker_clv_t if s.taker_clv_t is not None else -1e9,
+        reverse=True,
+    )
+
+
+def rank_live(
+    stats: Sequence[WalletStats], *, min_games: int = 20, min_stake: float = 2000.0
+) -> list[WalletStats]:
+    """Eligible wallets by live markout t-statistic, BH q-values across them."""
+    eligible = [s for s in stats if s.live_taker_games >= min_games and s.live_stake >= min_stake]
+    qs = bh_qvalues([one_sided_p(s.live_mark_t) for s in eligible])
+    for s, q in zip(eligible, qs, strict=True):
+        s.live_q_value = q
+    return sorted(
+        eligible,
+        key=lambda s: s.live_mark_t if s.live_mark_t is not None else -1e9,
         reverse=True,
     )
 
@@ -474,6 +614,12 @@ class GroupResult:
     roi: float | None
     copy_clv: float | None
     win_rate: float | None
+    copy_net: float | None = None
+    live_wallets: int = 0
+    live_stake: float = 0.0
+    live_mark: float | None = None
+    live_copy: float | None = None
+    live_copy_net: float | None = None
 
 
 @dataclass
@@ -484,15 +630,20 @@ class Persistence:
     groups: list[GroupResult]
     rank_corr: float | None
     compared: int
+    live_groups: list[GroupResult] = field(default_factory=list)
+    live_rank_corr: float | None = None
+    live_compared: int = 0
 
 
 def _pooled(label: str, rows: Sequence[GameRow], wallets: set[str]) -> GroupResult:
     pre = [r.sums for r in rows if r.pregame and r.wallet in wallets and r.sums[F["stake"]] > 0]
+    live = [r for r in rows if not r.pregame and r.wallet in wallets and r.sums[F["stake"]] > 0]
+    lsums = [r.sums for r in live]
     games = {(r.wallet, r.event_id) for r in rows if r.pregame and r.wallet in wallets}
 
-    def ratio(x: str, y: str) -> float | None:
-        den = sum(s[F[y]] for s in pre)
-        return sum(s[F[x]] for s in pre) / den if den > 0 else None
+    def ratio(x: str, y: str, group: Sequence[list[float]] = pre) -> float | None:
+        den = sum(s[F[y]] for s in group)
+        return sum(s[F[x]] for s in group) / den if den > 0 else None
 
     return GroupResult(
         label=label,
@@ -504,6 +655,12 @@ def _pooled(label: str, rows: Sequence[GameRow], wallets: set[str]) -> GroupResu
         roi=ratio("pnl", "stake"),
         copy_clv=ratio("copy_profit", "copy_stake"),
         win_rate=ratio("wins", "bets"),
+        copy_net=net(pre, "copy_profit", "copy_fee", "copy_stake"),
+        live_wallets=len({r.wallet for r in live}),
+        live_stake=sum(s[F["stake"]] for s in lsums),
+        live_mark=ratio("mark_profit", "mark_stake", lsums),
+        live_copy=ratio("lcopy_profit", "lcopy_stake", lsums),
+        live_copy_net=net(lsums, "lcopy_profit", "lcopy_fee", "lcopy_stake"),
     )
 
 
@@ -574,6 +731,29 @@ def persistence(
         and test_stats[s.wallet].taker_clv is not None
     ]
     corr = spearman([p[0] for p in pairs], [p[1] for p in pairs])  # type: ignore[misc]
+    live_ranked = rank_live(train_stats, min_games=min_games, min_stake=min_stake)
+    live_sharp = {s.wallet for s in live_ranked if s.live_sharp}
+    live_groups = []
+    if live_ranked:
+        live_top = {s.wallet for s in live_ranked[:top_n]}
+        live_bottom = {s.wallet for s in live_ranked[-top_n:]}
+        live_groups = [
+            _pooled(
+                f"Flagged live-sharp before split ({len(live_sharp)} wallets)", test, live_sharp
+            ),  # fmt: skip
+            _pooled(f"Top {top_n} live before split", test, live_top),
+            _pooled(f"Bottom {top_n} live before split", test, live_bottom),
+            _pooled("Every wallet", test, everyone),
+        ]
+    live_pairs = [
+        (s.live_mark_t, test_stats[s.wallet].live_mark)
+        for s in live_ranked
+        if s.live_mark_t is not None
+        and s.wallet in test_stats
+        and test_stats[s.wallet].live_taker_games >= min_test_games
+        and test_stats[s.wallet].live_mark is not None
+    ]
+    live_corr = spearman([p[0] for p in live_pairs], [p[1] for p in live_pairs])  # type: ignore[misc]
     return Persistence(
         split=split,
         train_games=len({r.event_id for r in train}),
@@ -581,4 +761,7 @@ def persistence(
         groups=groups,
         rank_corr=corr,
         compared=len(pairs),
+        live_groups=live_groups,
+        live_rank_corr=live_corr,
+        live_compared=len(live_pairs),
     )

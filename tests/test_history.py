@@ -14,6 +14,7 @@ from sharp_eyes.history.analyze import (
     parse_payout,
     persistence,
     rank,
+    rank_live,
     ratio_t,
     score_event,
     wallet_stats,
@@ -63,6 +64,47 @@ def test_game_event_filter() -> None:
     assert is_game_event({"title": "Bears vs. Lions"})
     assert not is_game_event({"title": "Bears vs. Lions - Player Props"})
     assert not is_game_event({"title": "Super Bowl Champion 2027"})
+    match = {"title": "Paris Masters: Jannik Sinner vs Carlos Alcaraz",
+             "markets": [{"sportsMarketType": "moneyline"}]}  # fmt: skip
+    assert is_game_event(match, "tennis")
+    assert not is_game_event({**match, "markets": []}, "tennis")
+    assert not is_game_event({"title": "Paris Masters Winner", "markets": []}, "tennis")
+
+
+def test_live_markout_and_follower_fee() -> None:
+    fills = [
+        *closing_tape(),
+        fill(KICK - 3600, "a", 0, "BUY", 0.50, 100),
+        fill(KICK - 3480, "x", 0, "BUY", 0.52, 10),  # copy price 120 s later
+        fill(KICK + 600, "a", 0, "BUY", 0.40, 100),  # live bet
+        fill(KICK + 720, "x", 0, "BUY", 0.45, 10),  # follower's price
+        fill(KICK + 900, "x", 0, "BUY", 0.55, 10),  # 5 min after the bet
+        fill(KICK + 1020, "x", 0, "BUY", 0.60, 10),  # 5 min after the copy
+    ]
+    scored = score_event(event(fee_rate=0.05), fills)
+    pre = next(r.sums for r in scored.rows if r.wallet == "a" and r.pregame)
+    live = next(r.sums for r in scored.rows if r.wallet == "a" and not r.pregame)
+    assert pre[F["copy_fee"]] == pytest.approx(0.05 * 100 * 0.52 * 0.48)
+    assert live[F["mark_profit"]] == pytest.approx(100 * (0.55 - 0.40))
+    assert live[F["mark_stake"]] == pytest.approx(40)
+    assert live[F["lcopy_profit"]] == pytest.approx(100 * (0.60 - 0.45))
+    assert live[F["lcopy_fee"]] == pytest.approx(0.05 * 100 * 0.45 * 0.55)
+
+
+def test_tennis_early_start_moves_the_cutoff() -> None:
+    # A 10c swing 20 minutes before the listed start: the match began early,
+    # so the bet at -10 minutes is in-play and the close comes from before it.
+    ev = {**event(), "sport": "tennis"}
+    fills = [
+        fill(KICK - 3000, "mm", 0, "BUY", 0.60, 1000),
+        fill(KICK - 1200, "mm", 0, "BUY", 0.60, 10),
+        fill(KICK - 1100, "mm", 0, "BUY", 0.70, 10),
+        fill(KICK - 600, "a", 0, "BUY", 0.65, 100),
+    ]
+    rows = score_event(ev, fills).rows
+    assert not any(r.pregame for r in rows if r.wallet == "a")
+    nfl = score_event(event(), fills).rows
+    assert any(r.pregame for r in nfl if r.wallet == "a")
 
 
 def test_payout_requires_a_settled_price() -> None:
@@ -163,6 +205,20 @@ def test_rank_and_persistence_separate_skill() -> None:
     check = persistence(rows, 30.0, min_games=20, min_stake=100, top_n=1)
     top = check.groups[1]
     assert top.wallets == 1 and top.taker_clv is not None and top.taker_clv > 0.02
+
+
+def test_rank_live_flags_fast_bettors() -> None:
+    rows = []
+    for wallet, edge in [*((f"dud{i}", -0.005) for i in range(10)), ("fast", 0.03)]:
+        for r in _rows(wallet, 0.0, range(40)):
+            r.pregame = False
+            noise = 0.01 * math.sin(int(r.event_id) * 3.0 + len(wallet))
+            r.sums[F["mark_stake"]] = 100.0
+            r.sums[F["mark_profit"]] = 100.0 * (edge + noise)
+            rows.append(r)
+    ranked = rank_live(wallet_stats(rows), min_games=20, min_stake=100)
+    assert ranked[0].wallet == "fast" and ranked[0].live_sharp
+    assert not any(s.live_sharp for s in ranked[1:])
 
 
 def test_cache_round_trip_and_report(tmp_path: Path) -> None:
