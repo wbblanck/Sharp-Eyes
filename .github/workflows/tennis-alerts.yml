@@ -36,7 +36,9 @@ jobs:
           restore-keys: tennis-alerts-state-
       - name: Write the wallet list from its secret
         if: steps.live.outputs.on == 'true'
-        run: printf '%s\n' "$WALLET_LIST" > alerts/frozen-list-2026-10-29.csv
+        run: |
+          if [ -z "$WALLET_LIST" ]; then echo "::error::The WALLET_LIST secret is missing or empty"; exit 1; fi
+          printf '%s\n' "$WALLET_LIST" > alerts/frozen-list-2026-10-29.csv
         env:
           WALLET_LIST: ${{ secrets.WALLET_LIST }}
       - name: Post new picks
