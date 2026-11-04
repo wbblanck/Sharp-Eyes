@@ -11,3 +11,8 @@ build/
 *.pem
 *.key
 secrets/
+
+# Tennis alerts: the wallet list comes from a secret, never commit it
+alerts/frozen-list-*.csv
+alerts-state.json
+.discord-webhook
