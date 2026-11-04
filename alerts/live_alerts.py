@@ -151,6 +151,8 @@ def card(t: dict, m: dict, start: datetime, st: dict | None, venues: Venues, sid
 
 def main() -> None:
     wallets = [r["wallet"] for r in csv.DictReader(open(HERE / "frozen-list-2026-10-29.csv"))]
+    if not wallets:
+        sys.exit("The wallet list is empty: nothing to check")
     webhook = os.environ.get("DISCORD_WEBHOOK", "").strip() or (HERE / ".discord-webhook").read_text().strip()
     state = json.loads(STATE.read_text()) if STATE.exists() else {}
     run_at = time.time()
