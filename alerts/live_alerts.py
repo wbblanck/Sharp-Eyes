@@ -89,16 +89,20 @@ def card(t: dict, m: dict, start: datetime, st: dict | None, venues: Venues, sid
     placed = datetime.fromtimestamp(t["timestamp"], UTC).astimezone(ET)
     tour, _, players = t["title"].rpartition(": ")
     kind = m.get("sportsMarketType") or ""
-    head = f"**{pick}** ({'to win' if kind == 'moneyline' else m.get('question') or kind})"
+    if kind == "moneyline":
+        head = f"**{pick}** to win | {players}{f' ({tour})' if tour else ''}"
+    else:  # the question already names the players
+        head = f"**{pick}** ({m.get('question') or kind})"
+    money = (lambda x: f"${x:,.2f}") if stake < 10 else (lambda x: f"${x:,.0f}")
     lines = [
-        f"{head} | {players}{f' ({tour})' if tour else ''}",
+        head,
         f"Starts {start.astimezone(ET):%a %b %d %I:%M %p} ET",
     ]
     usual = ""
     if st and float(st["matches"]):
         avg = float(st["pre_match_stake"]) / float(st["matches"])
         usual = f" ({stake / avg:.1f}x their average stake per match, ${avg:,.0f})"
-    lines.append(f"Sharp `{t['proxy_wallet'][:10]}` paid {q * 100:.0f}c, first fill ${stake:,.0f} at {placed:%I:%M %p} ET{usual}")
+    lines.append(f"Sharp `{t['proxy_wallet'][:10]}` paid {q * 100:.0f}c, first fill {money(stake)} at {placed:%I:%M %p} ET{usual}")
     if st:
         lines.append(
             f"Record (pre-match tennis, Oct 2025 to Oct 28, every loss counted): "
@@ -123,17 +127,21 @@ def card(t: dict, m: dict, start: datetime, st: dict | None, venues: Venues, sid
         else:
             lines.append("Not found on Polymarket US, Kalshi or Novig right now")
     else:
-        lines.append("Only match-winner picks are priced on Polymarket US, Kalshi and Novig")
+        lines.append("Side bet: Polymarket US, Kalshi and Novig list match winners only")
     ask = best_ask(tokens[t["k"]]) if t["k"] < len(tokens) else None
-    if ask is not None:
-        lines.append(f"Polymarket (international, view only) now {ask * 100:.0f}c")
+    slug = t.get("event_slug") or ""
+    intl = f"[Polymarket international](<https://polymarket.com/event/{slug}>)" if slug else "Polymarket international"
+    if ask is not None:  # polymarket.com/event/<slug> opens the match page (checked 4 Nov 2026)
+        lines.append(f"{intl} (view only) now {ask * 100:.0f}c")
+    elif slug:
+        lines.append(f"{intl} (view only)")
     ref = best["all_in"] if best else ask
     if ref is not None and ref - q >= 0.02:
         risks.append(f"price is {(ref - q) * 100:.0f}c worse than the sharp paid")
     if len(sides.get(t["condition_id"], [])) > 1:
         risks.append("list wallets are on both sides (the paper test skips this)")
     if stake < 50:
-        risks.append(f"small stake (${stake:,.0f})")
+        risks.append(f"small stake ({money(stake)})")
     if abs(q - 0.5) <= 0.02 and kind != "moneyline":
         risks.append("near 50c in a side market; check the match is still on")
     if risks:
