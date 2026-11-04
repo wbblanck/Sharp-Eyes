@@ -1,0 +1,53 @@
+# Discord alerts for new pre-match picks by the frozen tennis list (Will, 4 Nov 2026).
+# Runs every 5 minutes (GitHub may start scheduled runs late under load) until the
+# paper test ends on 2026-11-26. Needs the repository secrets DISCORD_WEBHOOK and WALLET_LIST
+# (the frozen list CSV, kept out of this public repo).
+# What was already posted is kept in the Actions cache between runs.
+name: Tennis alerts
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: tennis-alerts
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  alerts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Stop after the paper test
+        id: live
+        run: |
+          if [ "$(date -u +%Y%m%d)" -gt 20261126 ]; then echo "on=false" >> "$GITHUB_OUTPUT"; else echo "on=true" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/checkout@v4
+        if: steps.live.outputs.on == 'true'
+      - uses: actions/cache/restore@v4
+        if: steps.live.outputs.on == 'true'
+        with:
+          path: alerts-state.json
+          key: tennis-alerts-state-${{ github.run_id }}
+          restore-keys: tennis-alerts-state-
+      - name: Write the wallet list from its secret
+        if: steps.live.outputs.on == 'true'
+        run: printf '%s\n' "$WALLET_LIST" > alerts/frozen-list-2026-10-29.csv
+        env:
+          WALLET_LIST: ${{ secrets.WALLET_LIST }}
+      - name: Post new picks
+        if: steps.live.outputs.on == 'true'
+        run: python3 alerts/live_alerts.py
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          ALERTS_STATE: alerts-state.json
+          FIRST_LOOKBACK_S: "900"
+      - uses: actions/cache/save@v4
+        if: steps.live.outputs.on == 'true'
+        with:
+          path: alerts-state.json
+          key: tennis-alerts-state-${{ github.run_id }}
