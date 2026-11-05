@@ -8,7 +8,9 @@ Reads each list wallet's latest trades from Polymarket's Data API, keeps BUYs in
 ATP/WTA markets placed before the market's listed start, and posts one message
 per new pick (market and side), with the sharp's price and size and the best
 price on offer now. A pick whose market list wallets have backed on both sides
-is flagged, since the paper test skips those. Nothing is bought.
+gets no further cards once both sides are backed, since the paper test skips
+those (Will, 5 Nov 2026); the first side's card has already gone out by then and
+is flagged if both sides show up in the same run. Nothing is bought.
 
 State (what was already posted) lives in alerts-state.json next to this file,
 or at $ALERTS_STATE. The webhook link is read from $DISCORD_WEBHOOK, else from
@@ -125,7 +127,7 @@ def card(t: dict, m: dict, start: datetime, st: dict | None, venues: Venues, sid
                 where = f"[{v['venue']}](<{v['link']}>)" if v["link"] else f"{v['venue']} (app)"
                 lines.append(f"{'Best: ' if i == 0 else 'Also: '}{where} {price}")
         else:
-            lines.append("Not found on Polymarket US, Kalshi or Novig right now")
+            lines.append("No fair price on Polymarket US, Kalshi or Novig right now (not listed, or an empty book)")
     else:
         lines.append("Side bet: Polymarket US, Kalshi and Novig list match winners only")
     ask = best_ask(tokens[t["k"]]) if t["k"] < len(tokens) else None
@@ -196,8 +198,12 @@ def main() -> None:
         key = f"{cid}:{k}"
         if key in posted:
             continue
+        # Will, 5 Nov 2026: no card for a side picked after list wallets were
+        # already on the other side; the paper test skips the market.
+        skip = f"{cid}:{1 - k}" in posted
         posted[key] = [t["timestamp"], t["proxy_wallet"]]
-        out.append((t, m, start))
+        if not skip:
+            out.append((t, m, start))
     stats = {r["wallet"]: r for r in csv.DictReader(open(HERE / "frozen-list-2026-10-29.csv"))}
     venues = Venues()
     for t, m, start in out:
