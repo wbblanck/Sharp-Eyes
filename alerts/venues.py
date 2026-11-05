@@ -9,8 +9,11 @@ Price = what a taker pays now per $1 of payout, plus the taker fee:
 * Novig: every order buys one outcome, so taking a side costs 1 - best resting
   price on the other outcome. Fee only while live (charged WHEN_LIVE), so 0
   before the match.
-A quote with under $10 of payout behind it is ignored. Matches are found by
-both players' last names and a start within 36 hours.
+A quote with under $10 of payout behind it is ignored, and so is a market whose
+best offer and best bid are more than 20c apart: that is an empty book holding
+placeholder quotes (a doubles match on Polymarket US showed 97c to buy and 3c to
+sell on both sides, 4 Nov 2026), not a price anyone can fairly bet at. Matches
+are found by both players' last names and a start within 36 hours.
 
 Links: polymarket.us/event/<slug> and kalshi.com/events/<EVENT_TICKER> (both
 checked 4 Nov 2026). Novig has no public web link for a market; it is app only.
@@ -32,6 +35,7 @@ KALSHI = "https://external-api.kalshi.com/trade-api/v2"
 NOVIG = "https://api.novig.com/v3/public/catalog"
 KALSHI_SERIES = ("KXATPMATCH", "KXWTAMATCH", "KXATPCHALLENGERMATCH", "KXWTACHALLENGERMATCH")
 MIN_PAYOUT = 10.0
+MAX_SPREAD = 0.20
 
 
 def _get(url: str, params: dict | None = None, pause: float = 0.0) -> dict:
@@ -142,6 +146,10 @@ class Venues:
             if side is None:
                 continue
             book = _get(f"{PMUS}/markets/{m['slug']}/book").get("marketData") or {}
+            ask = min((float(o["px"]["value"]) for o in book.get("offers") or []), default=1.0)
+            bid = max((float(b["px"]["value"]) for b in book.get("bids") or []), default=0.0)
+            if ask - bid > MAX_SPREAD:
+                break
             if side.get("long"):
                 levels = [(float(o["px"]["value"]), float(o["qty"])) for o in book.get("offers") or []]
             else:
@@ -162,7 +170,7 @@ class Venues:
             if m is None or float(m.get("yes_ask_size_fp") or 0) < MIN_PAYOUT:
                 continue
             p = float(m.get("yes_ask_dollars") or 0)
-            if 0 < p < 1:
+            if 0 < p < 1 and p - float(m.get("yes_bid_dollars") or 0) <= MAX_SPREAD:
                 fee = 0.07 * p * (1 - p)
                 out.append({"venue": "Kalshi", "price": p, "fee": fee, "all_in": p + fee,
                             "link": f"https://kalshi.com/events/{e['event_ticker']}"})  # fmt: skip
@@ -178,7 +186,8 @@ class Venues:
             book = _get(f"{NOVIG}/markets/{m['marketId']}/book", pause=0.3).get("orders") or {}
             rest = [(float(o["price"]), o["qty"] / 100) for o in book.get(other["outcomeId"]) or []]
             rest = [r for r in rest if r[1] >= MIN_PAYOUT]
-            if rest:
+            bid = max((float(o["price"]) for o in book.get(mine["outcomeId"]) or []), default=0.0)
+            if rest and (1 - max(r[0] for r in rest)) - bid <= MAX_SPREAD:
                 p = 1 - max(r[0] for r in rest)
                 out.append({"venue": "Novig", "price": p, "fee": 0.0, "all_in": p, "link": None})
             break
