@@ -8,4 +8,4 @@ Applies Will's Tier 1/2/3 definition per wallet per market (tour x pre-match/in-
     uv run --with pandas python scripts/tennis-tiers/tiers.py bets.csv.gz pre/ --before 2026-07-03
     uv run --with pandas python scripts/tennis-tiers/forward.py bets.csv.gz pre/wallet-markets.csv 2026-07-03
 
-Rule definitions are in the docstring of tiers.py's `tier()` and in the 6 Nov 2026 report.
+Rule definitions: `tier()` in tiers.py, explained in the 6 Nov 2026 report (project files, sharp-traders/tennis/tiers/).
