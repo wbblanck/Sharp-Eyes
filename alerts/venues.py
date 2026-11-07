@@ -22,6 +22,7 @@ checked 4 Nov 2026). Novig has no public web link for a market; it is app only.
 from __future__ import annotations
 
 import json
+import re
 import time
 import unicodedata
 import urllib.error
@@ -120,7 +121,7 @@ class Venues:
                         for item in body.get("items") or []:
                             if sink is None:
                                 events[item["eventId"]] = item
-                            elif item.get("marketType") == "MONEY":
+                            else:  # every market type; quotes() keeps MONEY, side_quotes() the rest
                                 sink.append(item)
                         after = body.get("next") or ""
                         if not after:
@@ -176,6 +177,8 @@ class Venues:
                             "link": f"https://kalshi.com/events/{e['event_ticker']}"})  # fmt: skip
             break
         for e, m in self.novig():
+            if m.get("marketType") != "MONEY":
+                continue
             if not same(e.get("description", ""), (e.get("startsTs") or 0) / 1000):
                 continue
             outs = m.get("outcomes") or []
@@ -183,12 +186,95 @@ class Venues:
             other = next((o for o in outs if o is not mine), None)
             if mine is None or other is None:
                 continue
-            book = _get(f"{NOVIG}/markets/{m['marketId']}/book", pause=0.3).get("orders") or {}
-            rest = [(float(o["price"]), o["qty"] / 100) for o in book.get(other["outcomeId"]) or []]
-            rest = [r for r in rest if r[1] >= MIN_PAYOUT]
-            bid = max((float(o["price"]) for o in book.get(mine["outcomeId"]) or []), default=0.0)
-            if rest and (1 - max(r[0] for r in rest)) - bid <= MAX_SPREAD:
-                p = 1 - max(r[0] for r in rest)
-                out.append({"venue": "Novig", "price": p, "fee": 0.0, "all_in": p, "link": None})
+            q = _novig_price(m, mine, other)
+            if q:
+                out.append(q)
             break
         return sorted(out, key=lambda q: q["all_in"])
+
+    def side_quotes(self, question: str, kind: str, pick: str, start: float) -> list[dict]:
+        """Price a Polymarket side market (set or game handicap, set or game total,
+        first-set winner) on Novig, which lists these for ATP/WTA matches (checked
+        7 Nov 2026: SET_SPREAD, SPREAD, TOTAL_SETS, TOTAL, FIRST_SET_MONEYLINE).
+        Polymarket US lists match winners only; Kalshi side markets are not checked."""
+        ntype = NOVIG_SIDE.get(kind)
+        names = side_players(question)
+        if ntype is None or names is None:
+            return []
+        la, lb = last(names[0]), last(names[1])
+        line = side_line(question, kind, pick)
+        for e, m in self.novig():
+            if m.get("marketType") != ntype:
+                continue
+            words = set(norm(e.get("description", "")).split())
+            if la not in words or lb not in words or abs((e.get("startsTs") or 0) / 1000 - start) >= 36 * 3600:
+                continue
+            outs = m.get("outcomes") or []
+            mine = next((o for o in outs if side_outcome(o.get("name", ""), kind, pick, line)), None)
+            other = next((o for o in outs if o is not mine), None)
+            if mine is None or other is None:
+                continue
+            q = _novig_price(m, mine, other)
+            return [q] if q else []
+        return []
+
+
+# Polymarket sportsMarketType -> Novig marketType (Novig names checked 7 Nov 2026).
+NOVIG_SIDE = {
+    "tennis_set_handicap": "SET_SPREAD",
+    "tennis_game_handicap": "SPREAD",
+    "tennis_set_totals": "TOTAL_SETS",
+    "tennis_match_totals": "TOTAL",
+    "tennis_first_set_winner": "FIRST_SET_MONEYLINE",
+}
+
+
+def side_players(question: str) -> tuple[str, str] | None:
+    """Both players from a side-market question, e.g. 'Set Handicap: A (-1.5) vs B (+1.5)',
+    'A vs. B: Total Sets O/U 2.5', 'Set 1 Winner: A vs B', 'A vs. B: Match O/U 21.5'."""
+    head, _, tail = question.partition(": ")
+    text = tail if tail and not re.search(r"\svs\.?\s", head) else head
+    text = re.sub(r"\([^)]*\)", " ", text)
+    parts = re.split(r"\s+vs\.?\s+", text.strip())
+    return (parts[0].strip(), parts[1].strip()) if len(parts) == 2 else None
+
+
+def side_line(question: str, kind: str, pick: str) -> float | None:
+    if kind in ("tennis_set_handicap", "tennis_game_handicap"):
+        hit = re.search(re.escape(pick) + r"\s*\(([+-]?\d+(?:\.\d+)?)\)", question)
+    elif kind in ("tennis_set_totals", "tennis_match_totals"):
+        hit = re.search(r"O/U\s*(\d+(?:\.\d+)?)", question)
+    else:
+        return None
+    return float(hit.group(1)) if hit else None
+
+
+def side_outcome(name: str, kind: str, pick: str, line: float | None) -> bool:
+    """Is this Novig outcome ('E. Rybakina -1.5', 'Over 2.5', 'E. Rybakina') the pick?"""
+    words = norm(name).split()
+    raw = name.split()
+    try:
+        num = float(raw[-1])
+    except (ValueError, IndexError):
+        num = None
+    if kind in ("tennis_set_handicap", "tennis_game_handicap"):
+        return line is not None and last(pick) in words and num == line
+    if kind in ("tennis_set_totals", "tennis_match_totals"):
+        side = norm(pick).split()[:1]
+        return line is not None and bool(side) and words[:1] == side and num == line
+    if kind == "tennis_first_set_winner":
+        return last(pick) in words
+    return False
+
+
+def _novig_price(m: dict, mine: dict, other: dict) -> dict | None:
+    """Taking `mine` costs 1 - best resting price on `other` (with $10+ behind it).
+    Fee: Novig charges it only while live (fee.charged WHEN_LIVE), so 0 pre-match."""
+    book = _get(f"{NOVIG}/markets/{m['marketId']}/book", pause=0.3).get("orders") or {}
+    rest = [(float(o["price"]), o["qty"] / 100) for o in book.get(other["outcomeId"]) or []]
+    rest = [r for r in rest if r[1] >= MIN_PAYOUT]
+    bid = max((float(o["price"]) for o in book.get(mine["outcomeId"]) or []), default=0.0)
+    if rest and (1 - max(r[0] for r in rest)) - bid <= MAX_SPREAD:
+        p = 1 - max(r[0] for r in rest)
+        return {"venue": "Novig", "price": p, "fee": 0.0, "all_in": p, "link": None}
+    return None

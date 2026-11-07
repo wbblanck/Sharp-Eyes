@@ -128,8 +128,18 @@ def card(t: dict, m: dict, start: datetime, st: dict | None, venues: Venues, sid
                 lines.append(f"{'Best: ' if i == 0 else 'Also: '}{where} {price}")
         else:
             lines.append("No fair price on Polymarket US, Kalshi or Novig right now (not listed, or an empty book)")
-    else:
-        lines.append("Side bet: Polymarket US, Kalshi and Novig list match winners only")
+    else:  # Will, 7 Nov 2026: Novig lists set/game handicaps and totals too
+        try:
+            quotes = venues.side_quotes(m.get("question") or "", kind, pick, start.timestamp())
+        except Exception as err:
+            quotes = []
+            risks.append(f"venue prices unavailable ({type(err).__name__})")
+        if quotes:
+            best = quotes[0]
+            v = best
+            lines.append(f"Best: {v['venue']} (app) {v['price'] * 100:.1f}c + {v['fee'] * 100:.1f}c fee = **{v['all_in'] * 100:.1f}c**")
+        else:
+            lines.append("Side bet: no fair price on Novig right now (Polymarket US lists match winners only)")
     ask = best_ask(tokens[t["k"]]) if t["k"] < len(tokens) else None
     slug = t.get("event_slug") or ""
     intl = f"[Polymarket international](<https://polymarket.com/event/{slug}>)" if slug else "Polymarket international"
