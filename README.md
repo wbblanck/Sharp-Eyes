@@ -8,7 +8,7 @@ is disabled in code (`src/sharp_eyes/safety.py`).
 
 ## Status
 
-* **Phase 0, data capture (running):** an always-on worker records NFL
+* **Phase 0, data capture (paused; no server since 29 Oct 2026):** an always-on worker records NFL
   catalogs, order books and trades on all four venues, and measures Polymarket
   Data API detection latency. See [docs/phase0-capture.md](docs/phase0-capture.md).
 * **Phase 1, copyability (in review):** reviewed settlement templates for
@@ -17,6 +17,15 @@ is disabled in code (`src/sharp_eyes/safety.py`).
   what a follower could have bought after the delay, with fees, and scores it
   against the close. See [docs/phase1-copyability.md](docs/phase1-copyability.md).
   The canonical schema under `src/sharp_eyes/db` still has no migrations.
+* **Sharp-trader history (no server):** `sharp-eyes history-fetch` downloads
+  every settled NFL game and its fills from the public APIs into
+  `data/history`, and `sharp-eyes sharp-report` ranks wallets by how often
+  their bets beat the closing line, with significance, a luck correction and
+  an out-of-sample check. Runs on a laptop, no database. See
+  [docs/sharp-history.md](docs/sharp-history.md).
+* **Tennis (current focus):** Discord alerts for the frozen list's picks in
+  [alerts/](alerts/), and every tennis study (tiers, signal, pick skill, paper
+  test, random-wallet benchmark) in [research/tennis/](research/tennis/).
 
 ## Quick start (local)
 
