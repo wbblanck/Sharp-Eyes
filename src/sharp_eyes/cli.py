@@ -71,6 +71,90 @@ def cmd_copyability(args: argparse.Namespace) -> int:
     return 0
 
 
+def default_history_dir(sport: str) -> str:
+    return "data/history" if sport == "nfl" else f"data/history-{sport}"
+
+
+def cmd_history_fetch(args: argparse.Namespace) -> int:
+    from sharp_eyes.history.fetch import DEFAULT_SERIES, run_sync
+
+    data_dir = args.data_dir or default_history_dir(args.sport)
+    fetched, cached = run_sync(
+        Path(data_dir),
+        args.season or list(DEFAULT_SERIES[args.sport]),
+        sport=args.sport,
+        min_volume=args.min_volume,
+        since=args.since,
+        concurrency=args.concurrency,
+        data_rate=args.rate,
+        limit=args.limit,
+    )
+    print(f"fetched {fetched} games, {cached} already cached in {data_dir}")
+    return 0
+
+
+def cmd_sharp_report(args: argparse.Namespace) -> int:
+    from sharp_eyes.history.analyze import (
+        load_history,
+        persistence,
+        rank,
+        rank_live,
+        wallet_stats,
+        winning_records,
+    )
+    from sharp_eyes.history.fetch import HistoryCache
+    from sharp_eyes.history.report import SharpReport, default_split
+
+    data_dir = args.data_dir or default_history_dir(args.sport)
+    history = load_history(HistoryCache(Path(data_dir)), copy_delay=args.copy_delay)
+    if not history.rows:
+        print(f"no cached games in {data_dir}; run history-fetch first")
+        return 1
+    stats = wallet_stats(history.rows, history.by_type)
+    ranked = rank(stats, min_games=args.min_games, min_stake=args.min_stake)
+    records = winning_records(
+        stats, min_games=args.min_games, min_stake=args.min_stake, min_win_rate=args.min_win_rate
+    )
+    live_ranked = rank_live(stats, min_games=args.min_games, min_stake=args.min_stake)
+    split = (
+        datetime.fromisoformat(args.split).replace(tzinfo=UTC).timestamp()
+        if args.split
+        else default_split([r.kickoff for r in history.rows])
+    )
+    check = (
+        persistence(
+            history.rows,
+            split,
+            min_games=args.min_games,
+            min_stake=args.min_stake,
+            min_win_rate=args.min_win_rate,
+        )
+        if split is not None
+        else None
+    )
+    report = SharpReport(
+        history,
+        ranked,
+        check,
+        args.min_games,
+        args.min_stake,
+        args.copy_delay,
+        top=args.top,
+        records=records,
+        min_win_rate=args.min_win_rate,
+        sport=args.sport,
+        live_ranked=live_ranked,
+    )
+    body = report.to_markdown()
+    if args.out:
+        Path(args.out).write_text(body)
+    else:
+        sys.stdout.write(body)
+    if args.csv:
+        Path(args.csv).write_text(report.to_csv())
+    return 0
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     """Per-venue counts and last successful poll of each job."""
     engine = make_engine()
@@ -171,6 +255,36 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--format", choices=("md", "json"), default="md")
     p.add_argument("--out")
     p.set_defaults(fn=cmd_copyability)
+
+    p = sub.add_parser("history-fetch", help="download settled games and their fills (no database)")
+    p.add_argument("--sport", choices=("nfl", "tennis"), default="nfl")
+    p.add_argument("--data-dir", help="default: data/history (NFL), data/history-<sport>")
+    p.add_argument(
+        "--season",
+        action="append",
+        help="NFL season year or tennis tour (atp, wta, itf, ...), repeatable",
+    )
+    p.add_argument("--min-volume", type=float, default=0.0, help="skip smaller games (USD)")
+    p.add_argument("--since", help="only games starting at or after this UTC date (YYYY-MM-DD)")
+    p.add_argument("--rate", type=float, default=10.0, help="Data API requests per second")
+    p.add_argument("--concurrency", type=int, default=4, help="games downloaded in parallel")
+    p.add_argument("--limit", type=int, help="fetch at most this many new games")
+    p.set_defaults(fn=cmd_history_fetch)
+
+    p = sub.add_parser("sharp-report", help="rank wallets on skill vs luck from history")
+    p.add_argument("--sport", choices=("nfl", "tennis"), default="nfl")
+    p.add_argument("--data-dir", help="default: data/history (NFL), data/history-<sport>")
+    p.add_argument("--min-games", type=int, default=20, help="games bet before kickoff")
+    p.add_argument("--min-stake", type=float, default=5000.0, help="USD staked before kickoff")
+    p.add_argument(
+        "--min-win-rate", type=float, default=0.60, help="winning-record list: share of bets won"
+    )
+    p.add_argument("--copy-delay", type=float, default=120.0, help="follower delay, seconds")
+    p.add_argument("--split", help="YYYY-MM-DD for the persistence check (default: midpoint)")
+    p.add_argument("--top", type=int, default=30)
+    p.add_argument("--out", help="markdown output path (default: stdout)")
+    p.add_argument("--csv", help="also write every ranked wallet to this CSV")
+    p.set_defaults(fn=cmd_sharp_report)
 
     p = sub.add_parser("status", help="capture counts and recent polls")
     p.add_argument("--hours", type=float, default=1.0)
