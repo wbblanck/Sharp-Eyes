@@ -16,3 +16,7 @@ alerts/frozen-list-*.csv
 alerts-state.json
 .discord-webhook
 data/
+frozen-list-*.csv
+watch-wallets.txt
+wallet-list-secret.csv
+tier2-list.csv

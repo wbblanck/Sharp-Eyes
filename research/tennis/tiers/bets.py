@@ -10,7 +10,7 @@ from sharp_eyes.history.fetch import HistoryCache
 
 DATA = Path(sys.argv[1])
 COLS = ["wallet", "eid", "tour", "tourn", "kind", "phase", "ts", "stake", "taker_stake", "pnl",
-        "fee", "clv_p", "clv_s", "mk_p", "mk_s"]
+        "fee", "clv_p", "clv_s", "mk_p", "mk_s", "shares"]
 
 
 def one(eid):
@@ -43,8 +43,9 @@ def one(eid):
         key = (w, cid, "pre" if pre else "live")
         a = acc.get(key)
         if a is None:
-            a = acc[key] = [ts, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            a = acc[key] = [ts, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         a[1] += stake
+        a[9] += size
         a[2] += stake if taker else 0.0
         a[3] += size * (m.payout[k] - q) - fee
         a[4] += fee

@@ -12,7 +12,7 @@ Copy: $5 at 5 s, 15 s and 30 s after the signal.
 Book times: archive clock runs ~2.2 s behind the Data API trade second (measured 7 Nov), so book time = ts + d - 2.2.
 Usage (from the repo root):
   uv run sharp-eyes history-fetch --sport tennis --min-volume 50000 --since 2026-11-06 --rate 40 --concurrency 16
-  BOOK_TMP=/some/tmp uv run --with duckdb --with pandas --with numpy python scripts/tennis-signal/forward.py OUT_DIR"""
+  BOOK_TMP=/some/tmp uv run --with duckdb --with pandas --with numpy python research/tennis/signal/forward.py OUT_DIR"""
 import csv, importlib.util, json, sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,7 +22,7 @@ HERE = Path(__file__).resolve().parent
 sys.argv, OUT = [sys.argv[0], "data/history-tennis", "/dev/null"], Path(sys.argv[1])
 spec = importlib.util.spec_from_file_location("signals", HERE / "signals.py")
 S = importlib.util.module_from_spec(spec); spec.loader.exec_module(S)
-BOOKCHECK = Path("/mnt/project-files/sharp-traders/tennis/paper-test/orderbook/book_check.py")
+BOOKCHECK = Path(__file__).resolve().parents[1] / "paper-test" / "orderbook" / "book_check.py"
 spec = importlib.util.spec_from_file_location("book_check", BOOKCHECK)
 B = importlib.util.module_from_spec(spec); spec.loader.exec_module(B)
 from sharp_eyes.history.analyze import parse_ts

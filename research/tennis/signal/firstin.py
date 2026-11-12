@@ -1,6 +1,6 @@
 """First-in sharp signals: in-play price buckets vs everyone else, by month, and on the real order book.
 Run after order.py and book_signals.py (paths are the defaults used in README)."""
-import sys; sys.path.insert(0,"scripts/tennis-signal")
+import sys; sys.path.insert(0,"research/tennis/signal")
 import pandas as pd, numpy as np
 from classify import clustered
 s=pd.read_csv("data/signals.csv.gz",dtype={"eid":str})
@@ -14,7 +14,7 @@ s["who"]=np.where(s.role.isna(),"everyone else",np.where(s.role.isin(["alone","f
 r=clustered(s,["px","who"],["cev5","cev30"])
 pd.set_option("display.width",250); print(r.round(4).to_string())
 
-import sys; sys.path.insert(0,"scripts/tennis-signal")
+import sys; sys.path.insert(0,"research/tennis/signal")
 import pandas as pd, numpy as np
 from classify import clustered
 o=pd.read_csv("data/out/order/order-signals.csv.gz")
